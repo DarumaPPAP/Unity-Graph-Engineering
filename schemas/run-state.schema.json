@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Unity Graph Engineering Run State",
+  "type": "object",
+  "required": ["run_id", "repository", "workflow", "goal", "status", "nodes", "human_gate"],
+  "properties": {
+    "run_id": { "type": "string" },
+    "repository": { "type": "string" },
+    "workflow": { "type": "string" },
+    "goal": { "type": "string" },
+    "started_at": { "type": "string" },
+    "updated_at": { "type": "string" },
+    "status": { "enum": ["planned", "running", "blocked", "approved", "rejected", "escalated", "cancelled"] },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status", "attempts"],
+        "properties": {
+          "id": { "type": "string" },
+          "status": { "enum": ["pending", "running", "approved", "rejected", "skipped", "blocked"] },
+          "attempts": { "type": "integer", "minimum": 0 },
+          "last_action": { "type": "string" },
+          "last_evidence": { "type": "array", "items": { "type": "string" } },
+          "failure_signature": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "changed_artifacts": { "type": "array", "items": { "type": "string" } },
+    "unverified": { "type": "array", "items": { "type": "string" } },
+    "human_gate": {
+      "type": "object",
+      "required": ["required", "reasons"],
+      "properties": {
+        "required": { "type": "boolean" },
+        "reasons": { "type": "array", "items": { "type": "string" } },
+        "status": { "enum": ["not_required", "pending", "approved", "rejected"] }
+      }
+    },
+    "next_action": { "type": "string" },
+    "human_overrides": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}
