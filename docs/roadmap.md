@@ -2,21 +2,25 @@
 
 ## Phase 0 — Foundation
 
-- Unity固有Graph Engineering Skill
-- 3 Graph Architecture
-- Unity Ontology初版
-- Artifact Graph JSON Schema
-- AssetDatabaseベースの依存ScannerとExporter
+- [x] Unity固有Graph Engineering Skill
+- [x] 3 Graph Architecture
+- [x] Unity Ontology初版
+- [x] Artifact Graph JSON Schema
+- [x] AssetDatabaseベースの依存ScannerとExporter
 
 ## Phase 1 — Artifact Graph Quality
 
-- GUID・fileID単位の参照
-- Scene / Prefab階層とComponent Node
-- Material → Shader → Shader Pass → HLSL Include
-- Renderer Data → Renderer Feature → Render Pass
-- URP Asset / QualitySettings / GraphicsSettings
-- 差分ScanとCache
-- Graphの逆引き「このAssetを変更すると何が影響を受けるか」
+- [x] Node / Edgeの決定的な順序付け
+- [x] Scan ReportとDiagnostics
+- [x] Graphの逆引き「このAssetを変更すると何が影響を受けるか」
+- [x] EditMode Testの基礎Fixture
+- [ ] FakeUnity7 / Unity 6000.7.0a2でCompile・EditMode Testを実行
+- [ ] GUID・fileID単位の参照
+- [ ] Scene / Prefab階層とComponent Node
+- [ ] Material → Shader → Shader Pass → HLSL Include
+- [ ] Renderer Data → Renderer Feature → Render Pass
+- [ ] URP Asset / QualitySettings / GraphicsSettings
+- [ ] 差分ScanとCache
 
 ## Phase 2 — Code Graph
 
