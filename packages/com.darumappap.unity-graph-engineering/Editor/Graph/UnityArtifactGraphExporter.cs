@@ -8,6 +8,14 @@ namespace UnityGraphEngineering
 {
     public sealed class UnityArtifactGraphExporter
     {
+        public string Serialize(UnityArtifactGraph graph, bool prettyPrint)
+        {
+            if (graph == null)
+                throw new ArgumentNullException(nameof(graph));
+
+            return JsonUtility.ToJson(graph, prettyPrint);
+        }
+
         public string Export(UnityArtifactGraph graph, string projectRelativePath)
         {
             if (graph == null)
@@ -19,18 +27,14 @@ namespace UnityGraphEngineering
             var outputPath = Path.GetFullPath(Path.Combine(projectRoot, projectRelativePath));
             var projectRootWithSeparator = projectRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
 
-            if (!string.Equals(outputPath, projectRoot, StringComparison.OrdinalIgnoreCase) &&
-                !outputPath.StartsWith(projectRootWithSeparator, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException("出力先はUnity Project配下に限定されています。");
-            }
+            if (!outputPath.StartsWith(projectRootWithSeparator, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("出力先はUnity Project配下のファイルに限定されています。");
 
             var directoryPath = Path.GetDirectoryName(outputPath);
             if (!string.IsNullOrEmpty(directoryPath))
                 Directory.CreateDirectory(directoryPath);
 
-            var json = JsonUtility.ToJson(graph, true);
-            File.WriteAllText(outputPath, json, new UTF8Encoding(false));
+            File.WriteAllText(outputPath, Serialize(graph, true), new UTF8Encoding(false));
 
             var normalizedRelativePath = projectRelativePath.Replace('\\', '/');
             if (normalizedRelativePath.StartsWith("Assets/", StringComparison.Ordinal))
