@@ -1,0 +1,84 @@
+version: 0.1.0
+namespace: unity_graph_engineering
+
+provenance_required:
+  - source
+  - observed_at
+  - confidence
+
+entities:
+  Repository:
+    identity: repository_url
+  UnityVersion:
+    identity: version
+  Platform:
+    identity: platform_name
+  Package:
+    identity: package_name_and_version
+  Assembly:
+    identity: assembly_name
+  Scene:
+    identity: guid
+  Prefab:
+    identity: guid
+  GameObject:
+    identity: global_object_id
+  Component:
+    identity: global_object_id
+  Script:
+    identity: guid
+  Material:
+    identity: guid
+  Shader:
+    identity: guid
+  ShaderPass:
+    identity: shader_guid_and_pass_name
+  HlslInclude:
+    identity: guid
+  RenderPipelineAsset:
+    identity: guid
+  RendererData:
+    identity: guid
+  RendererFeature:
+    identity: renderer_data_guid_and_feature_index
+  ProjectSetting:
+    identity: setting_path_and_key
+  Bug:
+    identity: stable_issue_id
+  ErrorLog:
+    identity: content_hash
+  Fix:
+    identity: commit_and_change_id
+  Constraint:
+    identity: constraint_id
+  Decision:
+    identity: decision_id
+  Benchmark:
+    identity: benchmark_id
+  SourceDocument:
+    identity: source_uri
+  PullRequest:
+    identity: repository_and_number
+  Commit:
+    identity: repository_and_sha
+
+relations:
+  DEPENDS_ON: { domain: Artifact, range: Artifact }
+  REFERENCES: { domain: Artifact, range: Artifact }
+  CONTAINS: { domain: Artifact, range: Artifact }
+  USES_PACKAGE: { domain: Repository, range: Package }
+  COMPILES_INTO: { domain: Script, range: Assembly }
+  USES_SHADER: { domain: Material, range: Shader }
+  INCLUDES: { domain: Shader, range: HlslInclude }
+  DEFINES_PASS: { domain: Shader, range: ShaderPass }
+  CONFIGURES: { domain: ProjectSetting, range: Artifact }
+  TARGETS: { domain: Artifact, range: Platform }
+  BREAKS_ON: { domain: Bug, range: Platform }
+  OCCURS_IN: { domain: Bug, range: UnityVersion }
+  CAUSED_BY: { domain: Bug, range: Artifact }
+  FIXED_BY: { domain: Bug, range: Fix }
+  VERIFIED_BY: { domain: Fix, range: Benchmark }
+  DOCUMENTED_BY: { domain: Knowledge, range: SourceDocument }
+  INTRODUCED_BY: { domain: Knowledge, range: Commit }
+  REVIEWED_IN: { domain: Fix, range: PullRequest }
+  SUPERSEDES: { domain: Decision, range: Decision }

@@ -1,0 +1,55 @@
+version: 0.1.0
+goal: Unity Artifact Graph Scannerを追加する
+unity_version: 6000.7.0a2
+
+nodes:
+  goal-compiler:
+    type: plan
+    outputs: [acceptance-contract]
+  repository-scan:
+    type: research
+    inputs: [acceptance-contract]
+    outputs: [artifact-map]
+  unity-api-research:
+    type: research
+    inputs: [acceptance-contract]
+    outputs: [api-evidence]
+  implementation:
+    type: write
+    owner: tooling-worker
+    inputs: [artifact-map, api-evidence]
+    outputs: [changed-files]
+  compile-verifier:
+    type: verify
+    context: independent
+    inputs: [changed-files]
+    outputs: [compile-evidence]
+  architecture-verifier:
+    type: verify
+    context: independent
+    inputs: [changed-files]
+    outputs: [architecture-evidence]
+  merge-owner:
+    type: merge
+    inputs: [compile-evidence, architecture-evidence]
+    outputs: [merge-candidate]
+  human-gate:
+    type: approval
+    inputs: [merge-candidate]
+
+edges:
+  - [goal-compiler, repository-scan]
+  - [goal-compiler, unity-api-research]
+  - [repository-scan, implementation]
+  - [unity-api-research, implementation]
+  - [implementation, compile-verifier]
+  - [implementation, architecture-verifier]
+  - [compile-verifier, merge-owner]
+  - [architecture-verifier, merge-owner]
+  - [merge-owner, human-gate]
+
+guardrails:
+  max_loop_rounds: 3
+  max_parallel_workers: 3
+  one_writer_per_artifact: true
+  irreversible_actions_require_human_gate: true

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Unity Artifact Graph",
+  "type": "object",
+  "required": ["SchemaVersion", "UnityVersion", "GeneratedAtUtc", "RootAssetPath", "Nodes", "Edges"],
+  "properties": {
+    "SchemaVersion": { "type": "string" },
+    "UnityVersion": { "type": "string" },
+    "GeneratedAtUtc": { "type": "string" },
+    "RootAssetPath": { "type": "string" },
+    "Nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["Id", "Guid", "Path", "Name", "Kind"],
+        "properties": {
+          "Id": { "type": "string" },
+          "Guid": { "type": "string" },
+          "Path": { "type": "string" },
+          "Name": { "type": "string" },
+          "Kind": { "type": "string" }
+        }
+      }
+    },
+    "Edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["SourceId", "TargetId", "Relation", "Evidence"],
+        "properties": {
+          "SourceId": { "type": "string" },
+          "TargetId": { "type": "string" },
+          "Relation": { "type": "string" },
+          "Evidence": { "type": "string" }
+        }
+      }
+    }
+  }
+}

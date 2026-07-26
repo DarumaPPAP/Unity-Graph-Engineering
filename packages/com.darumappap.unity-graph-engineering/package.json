@@ -1,0 +1,16 @@
+{
+  "name": "com.darumappap.unity-graph-engineering",
+  "displayName": "Unity Graph Engineering",
+  "version": "0.1.0",
+  "unity": "6000.0",
+  "description": "Editor tooling and schemas for task, knowledge, and artifact dependency graphs in Unity projects.",
+  "keywords": [
+    "graph",
+    "dependencies",
+    "agent",
+    "editor"
+  ],
+  "author": {
+    "name": "DarumaPPAP"
+  }
+}
