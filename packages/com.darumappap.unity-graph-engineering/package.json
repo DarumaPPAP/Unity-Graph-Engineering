@@ -1,13 +1,13 @@
 {
   "name": "com.darumappap.unity-graph-engineering",
-  "displayName": "Unity Graph Engineering",
+  "displayName": "Unity Artifact Graph Scanner (Legacy)",
   "version": "0.2.1",
   "unity": "6000.0",
-  "description": "Editor tooling and schemas for task, knowledge, and artifact dependency graphs in Unity projects.",
+  "description": "Legacy optional Editor experiment for AssetDatabase dependency scanning. It is not the Unity Graph Engineering core workflow and is not required in target Unity projects.",
   "keywords": [
-    "graph",
+    "legacy",
     "dependencies",
-    "agent",
+    "artifact",
     "editor"
   ],
   "author": {
