@@ -1,0 +1,133 @@
+schema_version: "1.0"
+id: scene-generation
+name: AI Scene Generation
+readiness: L2_assisted
+trigger:
+  - generate or improve a Unity scene
+  - lighting and material authoring
+  - create a learning or showcase scene
+required_context:
+  - Unity and render pipeline versions
+  - target platform and quality target
+  - visual references or art direction
+  - available assets and licenses
+  - existing project settings
+budgets:
+  max_parallel_workers: 4
+  max_visual_iterations: 3
+nodes:
+  - id: compile-scene-goal
+    role: goal-compiler
+    purpose: Turn the art request into a visual and technical acceptance contract.
+    outputs:
+      - scene-goal-contract.yaml
+    required_fields:
+      - composition
+      - lighting
+      - materials
+      - atmosphere
+      - camera
+      - performance target
+      - required project assets and settings
+
+  - id: inspect-project-environment
+    role: repository-researcher
+    purpose: Inspect renderer assets, URP assets, quality settings, existing scenes, packages, and asset conventions.
+    depends_on:
+      - compile-scene-goal
+    mode: read_only
+    outputs:
+      - project-environment.md
+
+  - id: analyze-visual-references
+    role: visual-researcher
+    purpose: Extract composition, value hierarchy, palette, light direction, material language, and effects from references.
+    depends_on:
+      - compile-scene-goal
+    mode: read_only
+    outputs:
+      - visual-reference-analysis.md
+
+  - id: plan-scene
+    role: scene-plan-owner
+    purpose: Define scene hierarchy, asset plan, lighting rig, material plan, camera, post processing, and setup automation.
+    depends_on:
+      - inspect-project-environment
+      - analyze-visual-references
+    outputs:
+      - scene-plan.yaml
+    verification:
+      - all required assets and settings are listed
+      - no asset source or license is assumed
+      - scene and project settings writers are explicit
+
+  - id: implement-scene
+    role: scene-worker
+    purpose: Create the scene, assets, and setup tooling within the approved plan.
+    depends_on:
+      - plan-scene
+    loop:
+      action: implement one coherent visual pass
+      observe:
+        - scene open result
+        - missing references
+        - fixed-camera capture
+      evaluate_by: independent-visual-verifier
+      max_attempts: 3
+    outputs:
+      - scene and asset diff
+      - setup instructions
+      - captures
+
+  - id: verify-project-integrity
+    role: independent-unity-verifier
+    purpose: Verify compile, scene load, references, generated assets, pipeline assignment, and setup reproducibility.
+    depends_on:
+      - implement-scene
+    required_evidence:
+      - compile result
+      - scene opens without missing references
+      - required URP and renderer assets exist
+      - project settings changes are enumerated
+      - setup tool or instructions reproduce the configuration
+
+  - id: verify-visual-quality
+    role: independent-visual-verifier
+    purpose: Compare the fixed-camera result against the visual contract.
+    depends_on:
+      - implement-scene
+    required_evidence:
+      - reference images
+      - fixed-camera before and after captures
+      - criterion-by-criterion verdict
+    criteria:
+      - composition
+      - lighting hierarchy
+      - material response
+      - atmosphere and depth
+      - silhouette readability
+      - temporal artifacts
+
+  - id: merge-verdicts
+    role: merge-owner
+    purpose: Merge integrity and visual verdicts; reject if either fails.
+    depends_on:
+      - verify-project-integrity
+      - verify-visual-quality
+
+  - id: human-gate
+    role: human
+    purpose: Approve Scene, ProjectSettings, URP Asset, package, and visual trade-offs.
+    depends_on:
+      - merge-verdicts
+
+  - id: write-state
+    role: state-writer
+    purpose: Persist scene setup, captures, accepted trade-offs, and next quality pass.
+    depends_on:
+      - human-gate
+completion:
+  - project integrity verifier approves
+  - visual verifier approves
+  - human gate resolves project-level changes
+  - setup and state are documented
