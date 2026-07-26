@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Unity Task Graph",
+  "type": "object",
+  "required": ["schema_version", "id", "name", "nodes", "completion"],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+    "name": { "type": "string" },
+    "readiness": { "enum": ["L0_draft", "L1_report", "L2_assisted", "L3_unattended"] },
+    "trigger": { "type": "array", "items": { "type": "string" } },
+    "required_context": { "type": "array", "items": { "type": "string" } },
+    "budgets": { "type": "object" },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "role", "purpose"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "role": { "type": "string" },
+          "purpose": { "type": "string" },
+          "depends_on": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+          "mode": { "type": "string" },
+          "condition": { "type": "string" },
+          "optional_when": { "type": "string" },
+          "inputs": { "type": "array", "items": { "type": "string" } },
+          "outputs": { "type": "array", "items": { "type": "string" } },
+          "write_scope": { "type": "array", "items": { "type": "string" } },
+          "verification": { "type": "array", "items": { "type": "string" } },
+          "required_evidence": { "type": "array", "items": { "type": "string" } },
+          "verdicts": { "type": "array", "items": { "enum": ["APPROVE", "REJECT", "ESCALATE_HUMAN"] } },
+          "loop": {
+            "type": "object",
+            "properties": {
+              "action": { "type": "string" },
+              "observe": { "type": "array", "items": { "type": "string" } },
+              "evaluate_by": { "type": "string" },
+              "max_attempts": { "type": "integer", "minimum": 1, "maximum": 10 },
+              "stop_on": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "completion": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+  },
+  "additionalProperties": true
+}
