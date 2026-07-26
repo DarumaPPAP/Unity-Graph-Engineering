@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Unity Knowledge Write-back",
+  "type": "object",
+  "required": ["facts", "relationships"],
+  "properties": {
+    "facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "statement", "context", "source", "observed_at", "confidence"],
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "enum": ["Bug", "Cause", "Fix", "Constraint", "Decision", "Benchmark", "Source"] },
+          "statement": { "type": "string" },
+          "context": {
+            "type": "object",
+            "properties": {
+              "unity_version": { "type": "string" },
+              "render_pipeline": { "type": "string" },
+              "package_versions": { "type": "object", "additionalProperties": { "type": "string" } },
+              "platforms": { "type": "array", "items": { "type": "string" } }
+            },
+            "additionalProperties": false
+          },
+          "source": {
+            "type": "object",
+            "required": ["kind", "location"],
+            "properties": {
+              "kind": { "enum": ["repository", "test", "profiler", "screenshot", "official_documentation", "user_override"] },
+              "location": { "type": "string" },
+              "commit": { "type": "string" }
+            },
+            "additionalProperties": false
+          },
+          "observed_at": { "type": "string" },
+          "confidence": { "enum": ["verified", "probable", "unverified"] },
+          "supersedes": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": false
+      }
+    },
+    "relationships": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source_id", "relation", "target_id"],
+        "properties": {
+          "source_id": { "type": "string" },
+          "relation": { "enum": ["CAUSED_BY", "FIXED_BY", "VERIFIED_BY", "VALID_ON", "APPLIES_TO", "SUPPORTED_BY", "CONFLICTS_WITH", "SUPERSEDES"] },
+          "target_id": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
