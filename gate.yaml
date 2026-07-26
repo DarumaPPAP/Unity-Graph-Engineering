@@ -1,0 +1,45 @@
+version: 1
+
+default_merge_policy: human_approval
+
+auto_merge_allowlist: []
+
+denylist_paths:
+  - "**/.env*"
+  - "**/*secret*"
+  - "**/*credential*"
+  - "ProjectSettings/**"
+  - "Packages/manifest.json"
+  - "Packages/packages-lock.json"
+  - ".github/workflows/**"
+  - "Assets/**/*.unity"
+  - "Assets/**/*.asset"
+  - "Assets/**/*.mat"
+  - "Assets/**/*.prefab"
+
+human_gate_actions:
+  - merge
+  - push_main
+  - delete_asset
+  - change_project_settings
+  - change_render_pipeline_asset
+  - add_or_update_package
+  - replace_scene
+  - distribute_build
+
+risk_rules:
+  - name: runtime_editor_boundary
+    when: "Runtime assembly references UnityEditor"
+    verdict: reject
+  - name: disabled_verification
+    when: "Tests or assertions are removed, ignored, or weakened to pass"
+    verdict: reject
+  - name: repeated_failure
+    when: "Same failure signature occurs twice without a new hypothesis"
+    verdict: escalate_human
+  - name: unmeasured_visual_change
+    when: "Visual output changes without screenshots or captured evidence"
+    verdict: reject
+  - name: unmeasured_optimization
+    when: "Optimization has no comparable baseline and result"
+    verdict: reject
