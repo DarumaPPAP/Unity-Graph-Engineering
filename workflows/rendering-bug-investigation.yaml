@@ -1,0 +1,134 @@
+schema_version: "1.0"
+id: rendering-bug-investigation
+name: Rendering Bug Investigation
+readiness: L2_assisted
+trigger:
+  - editor and device visual mismatch
+  - transparent or render queue failure
+  - motion vector or temporal artifact
+  - renderer feature ordering issue
+  - black or missing rendering
+required_context:
+  - symptom
+  - affected Unity version
+  - render pipeline and package version
+  - platform
+  - reproduction steps or capture
+budgets:
+  max_parallel_workers: 4
+  max_hypotheses: 5
+  max_fix_attempts: 3
+nodes:
+  - id: normalize-symptom
+    role: goal-compiler
+    purpose: Convert the report into observable expected and actual behavior.
+    outputs:
+      - reproduction-contract.yaml
+
+  - id: collect-runtime-evidence
+    role: evidence-collector
+    purpose: Collect logs, screenshots, frame captures, material state, and platform conditions.
+    depends_on:
+      - normalize-symptom
+    mode: read_only
+    outputs:
+      - runtime-evidence.md
+
+  - id: inspect-rendering-path
+    role: rendering-researcher
+    purpose: Inspect passes, LightMode, RenderQueue, layers, sorting, resources, and relevant source.
+    depends_on:
+      - normalize-symptom
+    mode: read_only
+    outputs:
+      - rendering-path.md
+
+  - id: verify-api-behavior
+    role: unity-api-researcher
+    purpose: Verify version-sensitive behavior against official Unity sources.
+    depends_on:
+      - normalize-symptom
+    mode: read_only
+    outputs:
+      - api-evidence.md
+
+  - id: rank-hypotheses
+    role: investigation-owner
+    purpose: Rank falsifiable causes from collected evidence.
+    depends_on:
+      - collect-runtime-evidence
+      - inspect-rendering-path
+      - verify-api-behavior
+    outputs:
+      - hypotheses.yaml
+    verification:
+      - each hypothesis states confirming and falsifying evidence
+      - no fix is proposed without a reproduction path
+
+  - id: run-discriminating-test
+    role: diagnostic-worker
+    purpose: Execute the smallest test that separates the top hypotheses.
+    depends_on:
+      - rank-hypotheses
+    loop:
+      action: run one targeted diagnostic
+      observe:
+        - logs
+        - frame capture
+        - serialized state
+      max_attempts: 5
+      stop_on:
+        - one cause is confirmed
+        - required evidence is unavailable
+    outputs:
+      - confirmed-cause-or-escalation.md
+
+  - id: implement-targeted-fix
+    role: implementation-worker
+    purpose: Apply a minimal fix for the confirmed cause only.
+    depends_on:
+      - run-discriminating-test
+    condition: cause confirmed
+    loop:
+      action: modify owned rendering artifacts
+      observe:
+        - original reproduction
+        - compile
+        - regression scenarios
+      evaluate_by: independent-rendering-verifier
+      max_attempts: 3
+    outputs:
+      - source diff
+      - maker evidence
+
+  - id: verify-original-and-regression
+    role: independent-rendering-verifier
+    purpose: Verify the original failure is gone and adjacent rendering paths still work.
+    depends_on:
+      - implement-targeted-fix
+    required_evidence:
+      - original reproduction result
+      - before and after capture
+      - pass or resource evidence when applicable
+      - compile result
+    verdicts:
+      - APPROVE
+      - REJECT
+      - ESCALATE_HUMAN
+
+  - id: human-gate
+    role: human
+    purpose: Approve merge and any visual trade-off.
+    depends_on:
+      - verify-original-and-regression
+
+  - id: write-knowledge
+    role: state-writer
+    purpose: Save Bug, Cause, Fix, Version, Platform, and Verification provenance.
+    depends_on:
+      - human-gate
+completion:
+  - cause is confirmed with evidence
+  - original reproduction passes
+  - verifier approves regression coverage
+  - knowledge write-back completed

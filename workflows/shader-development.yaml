@@ -1,0 +1,105 @@
+schema_version: "1.0"
+id: shader-development
+name: Shader Development
+readiness: L2_assisted
+trigger:
+  - ShaderLab or HLSL implementation
+  - RendererFeature and shader integration
+  - motion vector or temporal support
+  - shader optimization
+required_context:
+  - Unity and render pipeline versions
+  - target platforms
+  - existing shader conventions
+  - visual acceptance reference
+budgets:
+  max_parallel_workers: 3
+  max_implementation_attempts: 3
+nodes:
+  - id: compile-visual-and-technical-goal
+    role: goal-compiler
+    purpose: Define visual result, pass behavior, platform scope, and performance constraints.
+    outputs:
+      - shader-goal-contract.yaml
+
+  - id: inspect-existing-shader
+    role: shader-researcher
+    purpose: Map Properties, CBUFFER, includes, passes, keywords, render states, and material controls.
+    depends_on:
+      - compile-visual-and-technical-goal
+    mode: read_only
+    outputs:
+      - shader-context.md
+
+  - id: inspect-pipeline-contract
+    role: rendering-researcher
+    purpose: Verify required LightMode, pass timing, resources, and official pipeline behavior.
+    depends_on:
+      - compile-visual-and-technical-goal
+    mode: read_only
+    outputs:
+      - pipeline-contract.md
+
+  - id: design-shader-change
+    role: plan-owner
+    purpose: Define the smallest shader interface and pass changes without breaking material compatibility.
+    depends_on:
+      - inspect-existing-shader
+      - inspect-pipeline-contract
+    outputs:
+      - shader-change-plan.yaml
+    verification:
+      - CBUFFER and properties remain compatible unless migration is explicit
+      - pass and render state changes are listed
+      - keyword and variant impact is listed
+
+  - id: implement-shader
+    role: shader-worker
+    purpose: Implement only the planned shader and integration changes.
+    depends_on:
+      - design-shader-change
+    loop:
+      action: edit owned shader artifacts
+      observe:
+        - shader compiler output
+        - material compatibility
+        - target capture
+      evaluate_by: independent-shader-verifier
+      max_attempts: 3
+    outputs:
+      - shader diff
+      - maker evidence
+
+  - id: verify-shader
+    role: independent-shader-verifier
+    purpose: Verify compile, pass selection, render state, visual result, temporal stability, and performance risk.
+    depends_on:
+      - implement-shader
+    required_evidence:
+      - shader compile result
+      - before and after capture
+      - LightMode and pass evidence
+      - RenderQueue and blend/depth/cull state when changed
+      - keyword and variant notes
+      - platform verification or explicit not_run
+    verdicts:
+      - APPROVE
+      - REJECT
+      - ESCALATE_HUMAN
+
+  - id: human-gate
+    role: human
+    purpose: Approve visual trade-offs, material migration, and merge.
+    depends_on:
+      - verify-shader
+
+  - id: write-state-and-knowledge
+    role: state-writer
+    purpose: Save pass contract, platform limitations, fix evidence, and unresolved variants.
+    depends_on:
+      - human-gate
+completion:
+  - shader compiles for required targets
+  - visual contract is approved
+  - material and pass compatibility are verified
+  - state write-back completed

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Unity Verification Evidence",
+  "type": "object",
+  "required": ["verdict", "criteria", "risks", "unverified"],
+  "properties": {
+    "verdict": { "enum": ["APPROVE", "REJECT", "ESCALATE_HUMAN"] },
+    "verifier": { "type": "string" },
+    "unity_version": { "type": "string" },
+    "platform": { "type": "string" },
+    "criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "status", "evidence"],
+        "properties": {
+          "name": { "type": "string" },
+          "status": { "enum": ["pass", "fail", "not_run"] },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["kind", "result"],
+              "properties": {
+                "kind": { "enum": ["command", "test", "log", "screenshot", "capture", "profiler", "source", "user_override"] },
+                "command": { "type": "string" },
+                "result": { "type": "string" },
+                "artifact": { "type": "string" },
+                "source": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "risks": { "type": "array", "items": { "type": "string" } },
+    "unverified": { "type": "array", "items": { "type": "string" } },
+    "recommendation": { "type": "string" }
+  },
+  "additionalProperties": false
+}

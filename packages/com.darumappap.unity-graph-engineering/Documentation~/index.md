@@ -1,30 +1,39 @@
-# Unity Graph Engineering Package
+# Unity Artifact Graph Scanner — Legacy Optional Tool
 
-## Artifact Graph
+> This package is not the Unity Graph Engineering core workflow.
 
-`Tools > Graph Engineering > Artifact Graph`を開き、走査対象Folderを指定します。
+Unity Graph Engineering now governs how AI agents plan, implement, verify, and record Unity production work. This Editor package remains only as an optional dependency-inspection experiment.
 
-1. `Graphを走査`してAsset依存を取得します。
-2. Scan ReportでNode / Edge数、処理時間、Missing GUID、未知種別、Skipped dependencyを確認します。
-3. 変更対象Assetと最大Hop数を指定し、`影響範囲を逆引き`して参照元を直接・間接に辿ります。
-4. 必要に応じてGraph JSONをUnity Project内へ出力します。
+Do not install it merely to use the AI workflow. Target Unity repositories only need the project context, state, workflow, and verifier files documented at the repository root.
 
-出力JSONは`schemas/artifact-graph.schema.json`で検証できます。NodeとEdgeはPath / ID順に整列されますが、`GeneratedAtUtc`と`DurationMilliseconds`は走査ごとに変化します。
+## Artifact Graph Window
 
-## EditMode Tests
+`Tools > Graph Engineering > Artifact Graph`
 
-Packageを`testables`へ追加すると、`DarumaPPAP.UnityGraphEngineering.Editor.Tests`をTest Runnerから実行できます。
+1. `Graphを走査`してAssetDatabase direct dependenciesを取得する
+2. Scan ReportでNode / Edge、処理時間、Missing GUID、Skipped dependencyを確認する
+3. 変更対象Assetから参照元を逆引きする
+4. 必要に応じてSnapshot JSONを出力する
 
-- 空FolderのScan
-- Prefab → Material → Shader依存
-- 揮発Fieldを除いたJSONの安定性
-- ShaderからMaterial / Prefabへの逆引き
-- Project外へのPath Traversal拒否
+## Evidence Boundary
 
-## Limitations
+The scanner only proves dependencies returned by `AssetDatabase.GetDependencies`.
 
-- 文字列によるScene Load、Resources Load、Shader.Findは検出しません
-- GUID + fileID / GlobalObjectIdは未対応です
-- C# method call graphは未対応です
-- Shader Pass、LightMode、RenderGraph Resourceは未対応です
-- JSON出力はSnapshotであり、差分更新やFusionは未対応です
+It does not prove:
+
+- C# method calls
+- dynamic Scene/Resource/Shader loads
+- GUID + fileID or GlobalObjectId relationships
+- Shader Pass or LightMode execution
+- RenderGraph resource flow
+- Addressables semantics
+
+Never use this snapshot as the sole basis for an implementation or merge decision.
+
+## Tests
+
+When added to `testables`, `DarumaPPAP.UnityGraphEngineering.Editor.Tests` checks empty scans, Prefab/Material/Shader dependency chains, normalized output stability, reverse lookup, path traversal rejection, and committed `.meta` files.
+
+## Future
+
+The package should be archived or moved to a separate repository after the AI production framework is dogfooded successfully in FakeUnity7.

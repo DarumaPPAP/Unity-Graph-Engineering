@@ -1,98 +1,181 @@
 # Architecture
 
-## 1. なぜ3種類のGraphを分離するか
+## 1. System Boundary
 
-Task、Knowledge、Artifactは更新頻度と責務が異なります。1つの巨大Graphへ押し込むと、短命な実行状態と長期保存する技術知識が混ざり、検索・更新・監査が難しくなります。
+Unity Graph EngineeringはUnity Editor内で動くGraph製品ではない。AI AgentがUnity Repositoryへ変更を加える際の制御系である。
 
 ```mermaid
 flowchart LR
-    Goal[User Goal] --> Task[Task Graph]
-    Artifact[Artifact Dependency Graph] --> Task
-    Knowledge[Knowledge Graph] --> Task
-    Task --> Change[Repository Change]
-    Change --> Verify[Verification Evidence]
-    Verify --> Knowledge
-    Change --> Artifact
+    User[User Goal] --> Contract[Goal Contract]
+    Contract --> Context[Repository + Official Context]
+    Context --> Graph[Task Graph]
+    Graph --> LoopA[Bounded Loop A]
+    Graph --> LoopB[Bounded Loop B]
+    LoopA --> Verify[Independent Verification]
+    LoopB --> Verify
+    Verify --> Merge[Merge Owner]
+    Merge --> Human{Human Gate}
+    Human --> State[State / Knowledge Write-back]
 ```
+
+Unity Projectは変更対象であり、Graph EngineのHostではない。
+
+## 2. Responsibilities
+
+### Goal Contract
+
+自然言語の依頼を機械判定可能な契約へ変える。
+
+- Deliverables
+- Acceptance criteria
+- Must / Must not
+- Unity / Pipeline / Platform
+- Required evidence
+- Human gates
+- Explicit assumptions
 
 ### Task Graph
 
-今回の作業実行計画です。Nodeは調査・設計・実装・検証などのJob、Edgeは実行依存です。作業完了後は監査ログとして残せますが、Graphの主目的は実行制御です。
+今回の仕事のTopology。
 
-### Knowledge Graph
+- Node: 1担当へ渡せるJob
+- Edge: 後段が前段Outputを読む実行依存
+- State: Job status、attempt、evidence、next action
+- Merge Owner: Output統合の単一責任者
 
-不具合、原因、修正、制約、Unityバージョン、Platform差、計測結果、出典を長期保存します。Factは必ずsource、time、confidenceを持ちます。
+### Loop
 
-### Artifact Dependency Graph
+Action Node内部の反復。
 
-Unity Project内の構造です。SceneからPrefab、PrefabからMaterial、MaterialからShader、ShaderからHLSL、ScriptからAPIという依存を表します。Task Graphは変更対象から影響範囲とVerifierを決定するために利用します。
-
-## 2. 実行フロー
-
-```mermaid
-flowchart LR
-    A[Goal Compiler] --> B[Artifact Scan]
-    B --> C[Plan Owner]
-    C --> D1[Independent Worker A]
-    C --> D2[Independent Worker B]
-    C --> D3[Independent Worker C]
-    D1 --> E[Independent Verifier]
-    D2 --> E
-    D3 --> E
-    E --> F[Merge Owner]
-    F --> G{Human Gate}
-    G -->|approve| H[Merge / Deploy]
-    G -->|reject| C
-    H --> I[Knowledge Write-back]
+```text
+Input → Action → Observe → Evaluate → Continue | Approve | Reject | Escalate
 ```
 
-## 3. Graph Edgeの基準
+Loopは上限、停止条件、Evaluatorを必ず持つ。
 
-Edgeは「後段のNodeが前段の成果を実際に読む場合」だけ作ります。単に文章上で「その後」と続くだけの処理はFake Edgeです。
+### Skills
 
-Unity例:
+Unity固有の再利用可能な手順・規約。Skillは具体的なTriggerを持ち、長いReferenceは別Fileへ分離する。
 
-- Repository Scan → Implementation Plan: Scan結果を読むため実Edge
-- Unity公式API調査 → Shader見た目レビュー: 調査結果を読まないならFake Edge
-- Shader変更 → Material/Scene検証: 変更結果に依存するため実Edge
+### Verifier
 
-## 4. Writer Ownership
+Makerと別ContextでAcceptance Contractを評価する。VerifierはSourceを修正しない。
 
-同じファイルへ複数Workerが書き込むことを禁止します。
+### State / Knowledge
 
-```yaml
-ownership:
-  Assets/Shaders/**: rendering-worker
-  Assets/Editor/**: tooling-worker
-  ProjectSettings/**: project-worker
-  Packages/manifest.json: package-worker
+- State: 現在のGoal、Node、Attempt、Failure、Next Action
+- Knowledge: Version、Platform、Sourceを持つ再利用可能なFact
+
+Chat履歴を唯一のState Storeにしない。
+
+## 3. Graph and Loop Composition
+
+Task Graphは外側、Loopは内側。
+
+```text
+Task Graph Node: Implement Shader
+
+  Attempt 1
+    edit → compile → capture → REJECT
+  Attempt 2
+    new hypothesis → edit → compile → capture → APPROVE
 ```
 
-境界をまたぐ変更はPlan Ownerが1つのWorkerへ統合するか、ファイル単位で明示的に分割します。
+複数NodeをLoopで無秩序に往復させない。RoutingはWorkflowに記述し、AgentはJobを実行する。
 
-## 5. Verifier
+## 4. Parallelism
 
-Verifierは実装者と別Contextで動き、感想ではなくEvidenceを返します。
+並列化する条件:
 
-- Compile: error / warning / assembly boundary
-- EditMode / PlayMode tests
-- UnityEditor APIのRuntime流入
-- Missing reference / GUID / meta
-- Scene・Material・Shaderの見た目
-- Frame Debugger、RenderDoc、Profilerなどの計測
-- Platform固有のBuildと実機結果
+- Output依存がない
+- Write Scopeが重ならない
+- Merge Ownerが存在する
+- Verificationが分離される
+
+Unityでの安全な例:
+
+```text
+                  ┌─ Repository conventions ─┐
+Goal Contract ────┼─ Unity official API ─────┼─→ Plan Owner
+                  └─ Platform constraints ───┘
+```
+
+Unityで逐次に残す例:
+
+- Shader interface → dependent pass implementation
+- Baseline capture → optimization
+- Root cause confirmation → fix
+- Scene pass → visual correction
+
+## 5. Maker / Checker Boundary
+
+Makerが渡すもの:
+
+- Diff
+- Expected result
+- Commands/tests run
+- Evidence artifacts
+- Known risks
+
+Checkerが返すもの:
+
+```text
+APPROVE | REJECT | ESCALATE_HUMAN
+```
+
+CheckerはMakerの説明を信頼せず、Goal ContractとEvidenceから判定する。
 
 ## 6. Human Gate
 
-次のように巻き戻しコストが高い操作だけをHuman Gateへ通します。
+HumanをすべてのNodeへ置かない。巻き戻しCostが高いActionに限定する。
 
-- PR merge
-- mainへの直接push
-- package release
-- SceneやProjectSettingsの大規模置換
-- Asset削除
-- Build配布
+- merge / push main
+- Asset deletion
+- Scene large replacement
+- ProjectSettings
+- Render Pipeline Asset
+- Package changes
+- Build distribution
 
-## 7. 初期実装の境界
+`gate.yaml`がDefault Policyを定義する。
 
-Phase 0では`AssetDatabase.GetDependencies`から得られるAsset依存のみを扱います。C# call graph、SerializedPropertyの意味解析、Shader Pass、RendererFeature実行順序、Build Variantは後続Phaseで追加します。
+## 7. State Spine
+
+各Runは開始時にStateを読み、終了時に書き戻す。
+
+```yaml
+run_id: ...
+workflow: ...
+status: running
+nodes:
+  - id: implement
+    status: rejected
+    attempts: 1
+    failure_signature: shader variant missing
+next_action: inspect stripped variant evidence
+```
+
+Stateは上書き可能なCurrent View、`loop-run-log.md`はAppend-only Historyとして扱う。
+
+## 8. Optional Artifact Context
+
+Asset依存、C# Call、Shader Pass、RenderGraph ResourceなどのArtifact情報はTask Graphを補助できる。ただし必須Runtimeではない。
+
+- Scoped searchで十分ならGraphを生成しない
+- Artifact Scannerの結果だけで変更判断しない
+- Unity Editor ToolをCore Productにしない
+
+## 9. Target Repository Integration
+
+対象Unity Repositoryへ置く最小File:
+
+```text
+AGENTS.md
+PROJECT_CONTEXT.md
+STATE.md
+KNOWLEDGE.md
+LOOP.md
+.codex/agents/unity-verifier.toml   # Codexの場合
+```
+
+Orchestrator SkillとWorkflowはUnity-Graph-Engineering側を参照する。

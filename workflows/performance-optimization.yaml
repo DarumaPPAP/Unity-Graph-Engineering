@@ -1,0 +1,104 @@
+schema_version: "1.0"
+id: performance-optimization
+name: Unity Performance Optimization
+readiness: L2_assisted
+trigger:
+  - CPU frame time reduction
+  - GPU frame time reduction
+  - memory reduction
+  - build size reduction
+required_context:
+  - target platform
+  - fixed scene and camera
+  - resolution and quality settings
+  - baseline capture
+  - acceptable visual or feature trade-offs
+budgets:
+  max_parallel_workers: 3
+  max_optimization_attempts: 3
+nodes:
+  - id: compile-performance-goal
+    role: goal-compiler
+    purpose: Define the metric, target, capture conditions, and protected quality criteria.
+    outputs:
+      - performance-goal-contract.yaml
+
+  - id: capture-baseline
+    role: performance-profiler
+    purpose: Record a reproducible baseline before proposing changes.
+    depends_on:
+      - compile-performance-goal
+    outputs:
+      - baseline-capture.md
+    verification:
+      - platform, scene, camera, resolution, quality, and frame range recorded
+      - CPU, GPU, memory, or size metric recorded
+
+  - id: inspect-code-and-rendering
+    role: repository-researcher
+    purpose: Inspect likely bottlenecks without changing source.
+    depends_on:
+      - compile-performance-goal
+    mode: read_only
+    outputs:
+      - bottleneck-context.md
+
+  - id: rank-bottlenecks
+    role: optimization-owner
+    purpose: Rank bottlenecks by evidence, expected gain, risk, and measurement method.
+    depends_on:
+      - capture-baseline
+      - inspect-code-and-rendering
+    outputs:
+      - optimization-plan.yaml
+
+  - id: implement-one-optimization
+    role: implementation-worker
+    purpose: Change one bottleneck category per attempt.
+    depends_on:
+      - rank-bottlenecks
+    loop:
+      action: implement one minimal optimization
+      observe:
+        - same-condition performance capture
+        - visual and functional regression
+      evaluate_by: independent-performance-verifier
+      max_attempts: 3
+    outputs:
+      - optimization diff
+      - result capture
+
+  - id: verify-performance
+    role: independent-performance-verifier
+    purpose: Compare baseline and result under identical conditions.
+    depends_on:
+      - implement-one-optimization
+    required_evidence:
+      - baseline and result metrics
+      - capture condition equality
+      - protected quality criteria
+      - compile and functional test
+    verdicts:
+      - APPROVE
+      - REJECT
+      - ESCALATE_HUMAN
+    reject_when:
+      - improvement is within measurement noise
+      - capture conditions differ
+      - quality loss is outside the goal contract
+
+  - id: human-gate
+    role: human
+    purpose: Approve visual, memory, compatibility, or maintainability trade-offs and merge.
+    depends_on:
+      - verify-performance
+
+  - id: write-benchmark
+    role: state-writer
+    purpose: Save baseline, result, conditions, accepted trade-offs, and remaining bottlenecks.
+    depends_on:
+      - human-gate
+completion:
+  - measurable improvement meets the target or human accepts partial result
+  - verifier approves regression checks
+  - benchmark provenance is written back
