@@ -1,0 +1,76 @@
+schema_version: "1.0"
+id: fakeunity7-l1-repository-intake
+name: FakeUnity7 Repository Intake
+readiness: L1_report
+trigger:
+  - first use of Unity Graph Engineering in FakeUnity7
+non_goals:
+  - source modification
+  - package modification
+  - project settings modification
+budgets:
+  max_parallel_workers: 3
+  max_attempts_per_node: 1
+nodes:
+  - id: read-project-identity
+    role: repository-researcher
+    purpose: Confirm Unity, URP, packages, branches, and repository purpose.
+    mode: read_only
+    outputs:
+      - project-identity.md
+
+  - id: inspect-code-and-assets
+    role: repository-researcher
+    purpose: Identify Runtime, Editor, Shader, Scene, Settings, and Test roots.
+    mode: read_only
+    outputs:
+      - repository-map.md
+
+  - id: discover-verification
+    role: verification-researcher
+    purpose: Identify actual compile, test, build, capture, and profiling procedures.
+    mode: read_only
+    outputs:
+      - verification-contract.md
+
+  - id: inspect-rules-and-risks
+    role: plan-owner
+    purpose: Collect coding conventions, protected paths, known risks, and human gates.
+    mode: read_only
+    outputs:
+      - rules-and-risks.md
+
+  - id: merge-context
+    role: merge-owner
+    purpose: Produce PROJECT_CONTEXT.md and initial STATE.md without inventing missing facts.
+    depends_on:
+      - read-project-identity
+      - inspect-code-and-assets
+      - discover-verification
+      - inspect-rules-and-risks
+    outputs:
+      - PROJECT_CONTEXT.md
+      - STATE.md
+      - missing-context.md
+
+  - id: verify-intake
+    role: independent-verifier
+    purpose: Check every project fact has repository evidence or is explicitly marked unknown.
+    depends_on:
+      - merge-context
+    verdicts:
+      - APPROVE
+      - REJECT
+      - ESCALATE_HUMAN
+
+  - id: recommend-first-task
+    role: plan-owner
+    purpose: Recommend one bounded L2 task based on verified project context.
+    depends_on:
+      - verify-intake
+    condition: verifier verdict is APPROVE
+completion:
+  - no source or project asset was modified
+  - context files separate facts from unknowns
+  - verifier approves provenance
+  - one bounded L2 task is recommended
