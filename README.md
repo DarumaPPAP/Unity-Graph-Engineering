@@ -14,12 +14,16 @@ Graph Engineeringを「エージェント数を増やす仕組み」にはしま
 
 ## 現在のMVP
 
-`packages/com.darumappap.unity-graph-engineering`には、Unity Editor上で指定フォルダ以下のAsset依存関係を走査し、JSONへ出力する最小ツールを配置しています。
+`packages/com.darumappap.unity-graph-engineering`には、Unity Editor上で指定フォルダ以下のAsset依存関係を走査し、変更対象から逆方向へ影響範囲を検索するEditor Toolを配置しています。
 
 - `AssetDatabase.GetDependencies`による直接依存の抽出
 - Scene / Prefab / Material / Shader / HLSL / Scriptなどの分類
 - GUIDをNode IDとしたArtifact Graph生成
 - Unityバージョン・生成時刻・依存根拠を含むJSON出力
+- Node / Edge順序を固定した再現可能な出力
+- 変更Assetを参照するArtifactの逆引きとHop距離
+- Scan時間、処理件数、Skipped dependency、Missing GUIDなどの品質レポート
+- EditMode Testによる依存Chain、安定出力、Impact Query、Path Traversal拒否の検証
 - Editor専用Assemblyに隔離し、Runtimeから`UnityEditor`を参照しない構成
 
 ### 導入
@@ -36,13 +40,18 @@ https://github.com/DarumaPPAP/Unity-Graph-Engineering.git?path=/packages/com.dar
 Tools > Graph Engineering > Artifact Graph
 ```
 
+1. 走査対象FolderとPackage依存の包含を指定する
+2. `Graphを走査`してScan Reportを確認する
+3. 変更対象Assetと最大Hop数を指定して`影響範囲を逆引き`する
+4. 必要に応じてGraph JSONをProject内へ出力する
+
 ## リポジトリ構成
 
 ```text
 .github/                         PR時のGraph Engineeringチェック
 skills/unity-graph-engineering/ エージェント向けSkill
 schemas/                        Ontology・Task Graph・Artifact Graph Schema
-packages/                       Unity Package実装
+packages/                       Unity Package実装とEditMode Tests
 docs/                           アーキテクチャとロードマップ
 ```
 
@@ -66,4 +75,4 @@ docs/                           アーキテクチャとロードマップ
 
 ## Status
 
-Phase 0: 基盤・Skill・Ontology・Artifact Graph Scannerの初版。次段階ではC#、ShaderLab/HLSL、Scene Objectの意味的依存を追加します。
+Phase 1進行中: Asset単位の依存Scan、品質レポート、逆引きImpact Queryまで実装。次はGUID + fileID / GlobalObjectIdによるScene・Prefab・Component Graphへ進みます。
