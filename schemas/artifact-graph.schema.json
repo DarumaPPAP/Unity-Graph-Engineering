@@ -2,12 +2,42 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Unity Artifact Graph",
   "type": "object",
-  "required": ["SchemaVersion", "UnityVersion", "GeneratedAtUtc", "RootAssetPath", "Nodes", "Edges"],
+  "required": ["SchemaVersion", "UnityVersion", "GeneratedAtUtc", "RootAssetPath", "Report", "Nodes", "Edges"],
   "properties": {
-    "SchemaVersion": { "type": "string" },
+    "SchemaVersion": { "const": "0.2.0" },
     "UnityVersion": { "type": "string" },
     "GeneratedAtUtc": { "type": "string" },
     "RootAssetPath": { "type": "string" },
+    "Report": {
+      "type": "object",
+      "required": ["DurationMilliseconds", "RootAssetCount", "ProcessedAssetCount", "NodeCount", "EdgeCount", "MissingGuidCount", "UnknownAssetKindCount", "DuplicateEdgeCount", "PackageDependencySkippedCount", "UnsupportedDependencySkippedCount", "DiagnosticLimitReached", "Diagnostics"],
+      "properties": {
+        "DurationMilliseconds": { "type": "integer", "minimum": 0 },
+        "RootAssetCount": { "type": "integer", "minimum": 0 },
+        "ProcessedAssetCount": { "type": "integer", "minimum": 0 },
+        "NodeCount": { "type": "integer", "minimum": 0 },
+        "EdgeCount": { "type": "integer", "minimum": 0 },
+        "MissingGuidCount": { "type": "integer", "minimum": 0 },
+        "UnknownAssetKindCount": { "type": "integer", "minimum": 0 },
+        "DuplicateEdgeCount": { "type": "integer", "minimum": 0 },
+        "PackageDependencySkippedCount": { "type": "integer", "minimum": 0 },
+        "UnsupportedDependencySkippedCount": { "type": "integer", "minimum": 0 },
+        "DiagnosticLimitReached": { "type": "boolean" },
+        "Diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["Code", "Severity", "Path", "Message"],
+            "properties": {
+              "Code": { "type": "string" },
+              "Severity": { "enum": ["Info", "Warning", "Error"] },
+              "Path": { "type": "string" },
+              "Message": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
     "Nodes": {
       "type": "array",
       "items": {
@@ -30,7 +60,7 @@
         "properties": {
           "SourceId": { "type": "string" },
           "TargetId": { "type": "string" },
-          "Relation": { "type": "string" },
+          "Relation": { "const": "DEPENDS_ON" },
           "Evidence": { "type": "string" }
         }
       }
