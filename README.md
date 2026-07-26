@@ -1,78 +1,129 @@
 # Unity Graph Engineering
 
-Unity 6000.7系のプロジェクトを対象に、AIエージェントの作業とUnityプロジェクトの依存関係を「グラフ」として扱うための実験・実装リポジトリです。
+UnityをAIで制作するときの**作業構造・反復・検証・状態管理**を設計するためのリポジトリです。
 
-## 目標
-
-本リポジトリでは、次の3層を分離して設計します。
-
-1. **Task Graph** — エージェントが今回どの順番で作業するか
-2. **Knowledge Graph** — 過去に判明した事実・判断・不具合・検証結果をどう記憶するか
-3. **Artifact Dependency Graph** — Scene、Prefab、Material、Shader、Script、Packageなどが何に依存しているか
-
-Graph Engineeringを「エージェント数を増やす仕組み」にはしません。独立している仕事だけを並列化し、逐次依存する仕事は1つの担当に残します。実装担当と検証担当は分離し、不可逆な操作はHuman Gateを通します。
-
-## 現在のMVP
-
-`packages/com.darumappap.unity-graph-engineering`には、Unity Editor上で指定フォルダ以下のAsset依存関係を走査し、変更対象から逆方向へ影響範囲を検索するEditor Toolを配置しています。
-
-- `AssetDatabase.GetDependencies`による直接依存の抽出
-- Scene / Prefab / Material / Shader / HLSL / Scriptなどの分類
-- GUIDをNode IDとしたArtifact Graph生成
-- Unityバージョン・生成時刻・依存根拠を含むJSON出力
-- Node / Edge順序を固定した再現可能な出力
-- 変更Assetを参照するArtifactの逆引きとHop距離
-- Scan時間、処理件数、Skipped dependency、Missing GUIDなどの品質レポート
-- EditMode Testによる依存Chain、安定出力、Impact Query、Path Traversal拒否の検証
-- Editor専用Assemblyに隔離し、Runtimeから`UnityEditor`を参照しない構成
-
-### 導入
-
-Unity Package ManagerのGit URLに次を指定します。
+このプロジェクトの主役はUnity Editor拡張ではありません。ChatGPT、Codex、Claude Code、CursorなどのエージェントがUnityリポジトリへ変更を加える際に、単発Promptではなく次の制御系で仕事を進めます。
 
 ```text
-https://github.com/DarumaPPAP/Unity-Graph-Engineering.git?path=/packages/com.darumappap.unity-graph-engineering
+User Goal
+   ↓
+Goal Contract
+   ↓
+Context Acquisition
+   ↓
+Task Graph
+   ↓
+Implementation Loop(s)
+   ↓
+Independent Verification
+   ↓
+Merge Owner
+   ↓
+Human Gate
+   ↓
+State / Knowledge Write-back
 ```
 
-導入後、Unityメニューから次を開きます。
+## 中心となる3つの考え方
+
+### Graph Engineering
+
+作業をNode、実行依存をEdgeとして定義します。後段が前段の成果を本当に読む場合だけEdgeを作り、独立作業だけを並列化します。
+
+### Loop Engineering
+
+各Nodeの内部を、入力・行動・観測・評価・停止条件を持つ反復として設計します。実装者は自分で完了判定を行わず、最大試行回数と予算を超えたら人間へEscalateします。
+
+### Unity Skills
+
+Unity固有の規約、公式API確認、実装手順、検証方法を再利用可能なSkillへ分離します。Orchestrator Skillは作業フローを所有し、個別の実装知識を重複して抱えません。
+
+## これは何ではないか
+
+- Unity内でノードグラフを表示するための製品ではない
+- Agent数を増やすこと自体を目的にしない
+- すべてを自動化・自動マージする仕組みではない
+- AIの自己申告をVerification Evidenceとして扱わない
+- Repositoryの既存規約より一般論を優先しない
+
+## Repository構成
 
 ```text
-Tools > Graph Engineering > Artifact Graph
+AGENTS.md                         AIが必ず守る運用契約
+LOOP.md                           このRepositoryで有効なLoop
+STATE.md                          会話外に残る現在状態
+loop-budget.md                    試行回数・並列数・停止条件
+gate.yaml                         Human Gateと危険Path
+
+skills/unity-graph-engineering/   Cross-agent Orchestrator Skill
+workflows/                        Unity制作タスク別Task Graph
+schemas/                          Goal・State・Evidenceの機械可読Schema
+templates/                        対象Unity Repositoryへ配置する雛形
+starters/codex/                   Codex用Maker/Checker構成
+examples/FakeUnity7/              FakeUnity7を対象とした実行例
+docs/                             設計・運用・Pilot手順
+
+packages/                         旧Artifact Scanner。補助実験でありCoreではない
 ```
 
-1. 走査対象FolderとPackage依存の包含を指定する
-2. `Graphを走査`してScan Reportを確認する
-3. 変更対象Assetと最大Hop数を指定して`影響範囲を逆引き`する
-4. 必要に応じてGraph JSONをProject内へ出力する
+`packages/`のUnity Editor拡張は初期の誤解から生まれた補助実験です。Core Workflowからは参照せず、後続PRでArchiveまたは別Repositoryへ分離します。
 
-## リポジトリ構成
+## 使い方
+
+### 1. 対象Unity RepositoryへProject Contextを置く
+
+`templates/PROJECT_CONTEXT.md`と`templates/STATE.md`を対象Repositoryへコピーし、Unity Version、Render Pipeline、Platform、Build/Test手順、禁止事項を記入します。
+
+### 2. SkillをAgentへ導入する
+
+Skill互換Agentでは、`skills/unity-graph-engineering/`をSkill Directoryへ追加します。
+
+Codexでは`starters/codex/README.md`を参照し、Verifier Agentも配置します。
+
+### 3. 普通にUnity制作を依頼する
+
+例:
 
 ```text
-.github/                         PR時のGraph Engineeringチェック
-skills/unity-graph-engineering/ エージェント向けSkill
-schemas/                        Ontology・Task Graph・Artifact Graph Schema
-packages/                       Unity Package実装とEditMode Tests
-docs/                           アーキテクチャとロードマップ
+FakeUnity7にURP向けの高品質なライブステージLightingを実装して。
+既存のProject Contextを読み、Unity Graph Engineeringで進めて。
 ```
 
-## 参考リポジトリとの役割分担
+Agentは以下を行います。
 
-- `Unity-Technologies/skills` — Skillの配置・frontmatter・責務分割の参考
-- `codejunkie99/graph-engineering` — Knowledge Graph / Task Graphという基本整理の参考
-- `Unity-Technologies/UnityCsReference` — Unity Editor APIの挙動確認専用。Reference Only Licenseのためコードは転載しない
-- `Unity-Technologies/ml-agents` — UPM Package、Editor/Runtime境界、ドキュメント構成の参考
+1. GoalをAcceptance Contractへ変換
+2. Repositoryと公式SourceからContextを確定
+3. Task Graphを作成し、Fake Edgeを削除
+4. 各Nodeを上限付きLoopで実行
+5. 別ContextのVerifierがCompile/Test/Visual/Performanceを判定
+6. Merge前にHuman Gateを提示
+7. STATEとKnowledgeへ結果を書き戻す
 
-詳細は[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)を参照してください。
+## Workflow Registry
 
-## 設計方針
+| Workflow | 用途 |
+|---|---|
+| `unity-feature-implementation.yaml` | Runtime / Editor機能の追加 |
+| `rendering-bug-investigation.yaml` | Editor/実機差、描画破綻、回帰調査 |
+| `shader-development.yaml` | Shader/HLSL/RendererFeature開発 |
+| `scene-generation.yaml` | AIによるScene・Lighting・Project設定生成 |
+| `performance-optimization.yaml` | CPU/GPU/Memory最適化 |
 
-- Schema first
-- すべてのFactとEdgeにprovenanceを付ける
-- 1 ArtifactにつきWriterは1つ
-- 実装者とVerifierを別Contextにする
-- Graphが単純な表や逐次処理より有利でない場合はGraphを使わない
-- 小規模なPilotを最後まで通してから対象範囲を増やす
+## Readiness
 
-## Status
+現在は**L1 Report / L2 Assistedの境界**です。
 
-Phase 1進行中: Asset単位の依存Scan、品質レポート、逆引きImpact Queryまで実装。次はGUID + fileID / GlobalObjectIdによるScene・Prefab・Component Graphへ進みます。
+- Task Graph、Loop、State、Gate、Evidence Contractを定義済み
+- Small fixはVerifier付きで実施可能
+- 自動マージは禁止
+- 無人実行、定期実行、Knowledge Fusionは未導入
+
+詳細は`docs/roadmap.md`を参照してください。
+
+## 参考Repository
+
+- `cobusgreyling/loop-engineering` — Loop、State、Budget、Maker/Checker、Readiness Level
+- `codejunkie99/graph-engineering` — Task Graph、Fake Edge、Diamond Pattern、Stop Rule、Human Gate
+- `Unity-Technologies/skills` — Skill構造、具体的なTrigger、Skill間Delegation、Reference分離
+
+利用方針とLicenseについては`THIRD_PARTY_NOTICES.md`を参照してください。
