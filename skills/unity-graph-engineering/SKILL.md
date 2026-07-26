@@ -1,126 +1,166 @@
 ---
 name: unity-graph-engineering
-description: Use when planning, implementing, reviewing, or teaching graph-engineered Unity development: task graphs for agent orchestration, knowledge graphs for durable Unity facts, and artifact dependency graphs for Scenes, Prefabs, Materials, Shaders, Scripts, Packages, ProjectSettings, and render-pipeline resources.
+description: Use when an AI coding agent must plan, implement, debug, optimize, or generate content in a Unity repository. Orchestrates Unity work as a goal contract, task graph, bounded implementation loops, independent verification, human gates, and durable state. Do not use it to build a graph UI unless the user explicitly requests one.
 ---
 
 # Unity Graph Engineering
 
-Unity開発をPromptの列ではなく、明示的なNode・Edge・State・Evidenceとして設計する。
+AIがUnity Repositoryへ変更を加えるときのOrchestrator Skill。
 
-## Three Graphs
+Graphは作業のTopology、Loopは各Node内部の反復、SkillはUnity固有知識、Stateは会話外の記憶として扱う。
 
-1. **Task Graph** — 今回の作業。NodeはJob、Edgeは実行依存。
-2. **Knowledge Graph** — 長期知識。Bug、Cause、Fix、Constraint、Decision、Benchmark、Sourceを保存。
-3. **Artifact Dependency Graph** — Unity Project構造。Scene、Prefab、Material、Shader、HLSL、Script、Assembly、Package、ProjectSettingsを接続。
+## Start Here
 
-3つを論理的に接続してよいが、同じStoreや同じSchemaへ無理に統合しない。
+対象Repositoryで次を順に読む。
 
-## Mandatory Workflow
+1. `AGENTS.md`
+2. `PROJECT_CONTEXT.md`
+3. `STATE.md`
+4. 関連するSource / Scene / ProjectSettings
+5. このSkillのWorkflow Registry
 
-### 1. Goal Compiler
+存在しないFileは`templates/`を参考に提案するが、実装を止める必要がない場合は現在確定できるContextで進める。
 
-実装前に次を機械判定可能なAcceptance Contractへ変換する。
+## Select One Workflow
 
-- Unity version
-- Render Pipeline
-- Target platforms
-- Deliverables
-- Must / Must not
-- Visual acceptance
-- Performance budget
-- Verification method
+依頼に最も近いWorkflowを1つ選ぶ。
 
-不明な値は勝手に埋めず、Repositoryから確定できない重要項目だけ確認する。
+- Runtime / Editor機能追加 → `workflows/unity-feature-implementation.yaml`
+- 描画不具合調査 → `workflows/rendering-bug-investigation.yaml`
+- Shader / HLSL / RendererFeature → `workflows/shader-development.yaml`
+- Scene / Lighting / Material生成 → `workflows/scene-generation.yaml`
+- CPU / GPU / Memory最適化 → `workflows/performance-optimization.yaml`
 
-### 2. Artifact Scan
+複数Workflowを同時に始めない。主WorkflowのNodeとして必要な検証だけ取り込む。
 
-変更対象と依存先を列挙する。最低限、対象ファイル、参照元、参照先、Assembly境界、Editor/Runtime境界を確認する。
+## 1. Compile the Goal
 
-変更影響をGraphで表現できない場合は、単純なファイル一覧と検索で済ませる。Graphを作ることを目的化しない。
+実装前にGoal Contractを作る。
 
-### 3. Plan Graph
-
-Edgeは後段Nodeが前段成果物を読む場合だけ作る。Fake Edgeを削除し、独立調査だけを並列化する。
-
-推奨形:
-
-```text
-                         ┌─ worker A ─┐
-plan ─ artifact/context ─┼─ worker B ─┼─ verifier ─ merge ─ human gate
-                         └─ worker C ─┘
+```yaml
+goal: ""
+deliverables: []
+acceptance_criteria: []
+must: []
+must_not: []
+unity:
+  version: ""
+  render_pipeline: ""
+  target_platforms: []
+verification_required: []
+human_gate: []
+assumptions: []
 ```
 
-逐次依存が強い作業は1つのWorkerに残す。Agent数を増やすことを最適化指標にしない。
+Repositoryから確定できる情報は質問しない。結果を左右する不明点だけユーザーへ確認する。
 
-### 4. Ownership
+## 2. Build the Task Graph
 
-1 ArtifactにつきWriterは1つ。複数Workerが同じ`.cs`、`.shader`、`.unity`、`.asset`、ProjectSettingsを変更してはならない。
+Nodeは1担当へ渡せるJobにする。Edgeは後段が前段の成果を読む場合だけ作る。
 
-### 5. Implementation
+```text
+Goal Contract
+     ↓
+Context / Baseline
+     ↓
+Plan Owner
+  ┌──┼──────────┐
+  ↓  ↓          ↓
+Worker A   Worker B   Worker C
+  └──┼──────────┘
+     ↓
+Independent Verifier
+     ↓
+Merge Owner
+     ↓
+Human Gate
+```
 
-Unity固有ルール:
+Rules:
 
-- Runtimeから`UnityEditor` APIを呼ばない
-- Editor機能はEditor folderまたはEditor-only asmdefへ隔離
-- asmdefは依存境界として必要な場合だけ追加
-- private fieldは`_camelCase`
-- Enumは`E_`、Structは`S_`。Structは値型の利点が明確な場合だけ使用
+- Fake Edgeを削除する
+- 逐次依存は1 Workerに残す
+- 1 ArtifactにつきWriterは1人
+- 最大4 Worker
+- Merge Ownerを1人に固定
+- Artifact Graph Toolを必須にしない。通常の検索やファイル一覧で十分ならそれを使う
+
+詳細: `references/task-graphs.md`
+
+## 3. Run Bounded Loops
+
+Action Nodeは次のLoopで進める。
+
+```text
+Input → Action → Observe → Evaluate → Continue | Approve | Reject | Escalate
+```
+
+- 最大3 Attempt
+- 同じFailure Signatureを2回繰り返したら仮説を変更するか停止
+- Scopeを広げて失敗を隠さない
+- Testを無効化しない
+- Implementerは自分の完了を判定しない
+
+詳細: `references/loop-design.md`
+
+## 4. Apply Unity Constraints
+
+- Runtimeから`UnityEditor`を参照しない
+- Editor機能はEditor FolderまたはEditor-only Assemblyへ隔離
+- asmdefは境界が必要な場合だけ追加
+- private Fieldは`_camelCase`
+- Enumは`E_`、Structは`S_`
 - MonoBehaviourは1ファイル1型
-- 不要なController、Setup関数、自動探索、static状態を追加しない
-- ProjectSettingsやURP Assetの変更を暗黙に行わない
-- Shader / RendererFeature変更ではPass、LightMode、RenderQueue、Layer、Sorting、Resource read/writeを記録
+- 不要なController、Setup、自動探索、static状態を追加しない
+- ProjectSettings、URP Asset、Scene、Materialを暗黙変更しない
+- Shader / RendererFeatureではPass、LightMode、RenderQueue、Layer、Sorting、Resource read/writeを記録
+- Unity APIは公式DocumentationまたはUnityCsReferenceで確認する
+- UnityCsReferenceのSourceを転載しない
 
-### 6. Independent Verification
+## 5. Verify in a Separate Context
 
-Verifierは実装者と別Contextで実行する。自己評価のみで完了扱いにしない。
-
-Evidence例:
-
-- Unity compile result
-- EditMode / PlayMode test result
-- Build result per platform
-- Runtime/Editor assembly boundary
-- Missing GUID / reference
-- Screenshot or captured frame
-- Frame Debugger / RenderDoc event
-- CPU / GPU / memory measurement
-- Shader variant and keyword evidence
-
-### 7. Merge Owner
-
-Verifierが通した変更だけを1つのOwnerが統合する。衝突時にWorker同士で暗黙解決させない。
-
-### 8. Human Gate
-
-merge、release、deploy、delete、ProjectSettingsの大規模置換など、失敗時に戻すコストが高い操作は明示承認を通す。
-
-### 9. Knowledge Write-back
-
-完了後、次を保存する。
+VerifierはMakerと別Contextで動き、次のどれかを返す。
 
 ```text
-(Bug)-[CAUSED_BY]->(Artifact)
-(Bug)-[FIXED_BY]->(Fix)
-(Fix)-[VERIFIED_BY]->(Benchmark)
-(Fact)-[DOCUMENTED_BY]->(Source)
+APPROVE | REJECT | ESCALATE_HUMAN
 ```
 
-FactとEdgeにはUnityVersion、Platform、PackageVersion、source、observed_at、confidenceを付ける。
+Evidenceは依頼に応じて選ぶ。
 
-## Source Policy
+- Unity Compile
+- EditMode / PlayMode Test
+- Build
+- Missing GUID / Reference
+- Runtime / Editor Assembly Boundary
+- Screenshot / Game View Capture
+- Frame Debugger / RenderDoc
+- CPU / GPU / Memory Capture
+- Shader Variant / Keyword / Pass Evidence
 
-- Unity APIは公式DocumentationまたはUnityCsReferenceで確認する
-- UnityCsReferenceはReference Onlyのためコードを複製しない
-- Repositoryの既存規約と実装を一般論より優先する
-- 外部記事の主張はversionと検証条件を記録する
+実行していない検証を推測でPASSにしない。
 
-## Completion Contract
+詳細: `references/unity-verification.md`
 
-最終報告には以下を含める。
+## 6. Human Gate
 
-1. Task Graphの実行結果
-2. 変更Artifactと依存影響
-3. Verifier Evidence
-4. 未検証事項
-5. Human Gateが必要な操作
-6. Knowledge Graphへ書き戻すFact
+`gate.yaml`を読み、Merge、Delete、ProjectSettings、Package、Scene大規模変更などを承認待ちにする。
+
+ユーザーが明示的にMergeを依頼した場合のみMergeする。
+
+## 7. Write State Back
+
+作業後に対象Repositoryの`STATE.md`へOutcome、Evidence、Failure、Next Action、Human Overrideを記録する。
+
+長期的に再利用できるFactだけを`KNOWLEDGE.md`またはKnowledge Storeへ追加する。Source、UnityVersion、Platform、PackageVersion、observed_at、confidenceを付ける。
+
+詳細: `references/knowledge-writeback.md`
+
+## Completion Output
+
+1. Goalの達成状況
+2. 実行したTask Graph
+3. Attemptと変更Artifact
+4. Verifier VerdictとEvidence
+5. 未検証事項
+6. Human Gate
+7. State / Knowledge Write-back
