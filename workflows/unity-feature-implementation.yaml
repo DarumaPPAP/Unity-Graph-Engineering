@@ -1,0 +1,127 @@
+schema_version: "1.0"
+id: unity-feature-implementation
+name: Unity Feature Implementation
+readiness: L2_assisted
+trigger:
+  - runtime feature implementation
+  - editor tooling implementation
+  - package or project integration
+non_goals:
+  - broad architecture rewrite without acceptance criteria
+  - automatic merge
+required_context:
+  - AGENTS.md
+  - PROJECT_CONTEXT.md
+  - STATE.md
+  - relevant source and tests
+budgets:
+  max_parallel_workers: 3
+  max_attempts_per_action_node: 3
+  max_identical_failures: 2
+nodes:
+  - id: compile-goal
+    role: goal-compiler
+    purpose: Convert the request into a measurable Unity goal contract.
+    outputs:
+      - goal-contract.json
+    verification:
+      - every deliverable has an acceptance criterion
+      - Unity version and pipeline are known or marked unknown
+
+  - id: inspect-repository
+    role: repository-researcher
+    purpose: Read project conventions, nearby implementations, assembly boundaries, and tests.
+    depends_on:
+      - compile-goal
+    mode: read_only
+    outputs:
+      - repository-context.md
+
+  - id: inspect-official-api
+    role: unity-api-researcher
+    purpose: Confirm unstable Unity APIs against official documentation or UnityCsReference.
+    depends_on:
+      - compile-goal
+    mode: read_only
+    optional_when: existing repository implementation fully establishes the API
+    outputs:
+      - api-evidence.md
+
+  - id: plan-change
+    role: plan-owner
+    purpose: Define minimal artifacts, writer ownership, dependencies, tests, and human gates.
+    depends_on:
+      - inspect-repository
+      - inspect-official-api
+    outputs:
+      - task-plan.yaml
+    verification:
+      - no fake edges
+      - one writer per artifact
+      - no unapproved denylist path
+
+  - id: implement
+    role: implementation-worker
+    purpose: Implement the smallest change that satisfies the goal contract.
+    depends_on:
+      - plan-change
+    loop:
+      action: modify owned artifacts
+      observe:
+        - compile output
+        - targeted test output
+      evaluate_by: independent-verifier
+      max_attempts: 3
+      stop_on:
+        - same failure signature twice
+        - goal contract must change
+        - denylist path required
+    outputs:
+      - source diff
+      - maker evidence
+
+  - id: verify-compile-and-tests
+    role: independent-verifier
+    purpose: Validate compile, tests, assembly boundaries, and exact acceptance criteria.
+    depends_on:
+      - implement
+    mode: checker_only
+    outputs:
+      - verification-evidence.json
+    verdicts:
+      - APPROVE
+      - REJECT
+      - ESCALATE_HUMAN
+
+  - id: merge-evidence
+    role: merge-owner
+    purpose: Integrate only approved changes and summarize unresolved risk.
+    depends_on:
+      - verify-compile-and-tests
+    condition: verifier verdict is APPROVE
+    outputs:
+      - run-report.md
+
+  - id: human-gate
+    role: human
+    purpose: Approve merge or other high-cost action.
+    depends_on:
+      - merge-evidence
+    required_for:
+      - merge
+      - package changes
+      - project settings changes
+      - asset deletion
+
+  - id: write-state
+    role: state-writer
+    purpose: Persist outcome, evidence, failures, and next action outside chat.
+    depends_on:
+      - human-gate
+    outputs:
+      - updated STATE.md
+      - optional KNOWLEDGE.md facts
+completion:
+  - verifier verdict is APPROVE
+  - all required human gates are resolved
+  - state write-back completed
