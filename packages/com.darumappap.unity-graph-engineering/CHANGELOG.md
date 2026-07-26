@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.2.1]
+
+- Added committed Unity `.meta` files for every visible package asset so Git-based UPM installs import the Editor assemblies
+- Added an EditMode regression test that fails when a visible package asset is missing its `.meta` file
+
 ## [0.2.0]
 
 - Added reverse dependency impact query with configurable hop depth

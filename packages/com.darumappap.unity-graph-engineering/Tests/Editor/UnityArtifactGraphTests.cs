@@ -91,6 +91,27 @@ namespace UnityGraphEngineering.Tests
             Assert.Throws<System.InvalidOperationException>(() => new UnityArtifactGraphExporter().Export(graph, "../unity-graph-engineering-outside.json"));
         }
 
+        [Test]
+        public void Package_VisibleAssetsHaveMetaFiles()
+        {
+            var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(UnityArtifactGraphScanner).Assembly);
+            Assert.That(packageInfo, Is.Not.Null);
+
+            var missingMetaPaths = Directory
+                .EnumerateFileSystemEntries(packageInfo.resolvedPath, "*", SearchOption.AllDirectories)
+                .Where(path => !path.EndsWith(".meta", System.StringComparison.OrdinalIgnoreCase))
+                .Where(path => !IsHiddenFromUnity(packageInfo.resolvedPath, path))
+                .Where(path => !File.Exists(path + ".meta"))
+                .Select(path => path.Substring(packageInfo.resolvedPath.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+                .OrderBy(path => path, System.StringComparer.Ordinal)
+                .ToArray();
+
+            Assert.That(
+                missingMetaPaths,
+                Is.Empty,
+                "Every visible package asset must have a committed .meta file:\n" + string.Join("\n", missingMetaPaths));
+        }
+
         private static void CreateFixtureAssets()
         {
             var shaderSource = @"Shader ""Hidden/UnityGraphEngineering/Validation""
@@ -142,6 +163,14 @@ namespace UnityGraphEngineering.Tests
         private static string ToAbsolutePath(string projectRelativePath)
         {
             return Path.GetFullPath(Path.Combine(Application.dataPath, "..", projectRelativePath));
+        }
+
+        private static bool IsHiddenFromUnity(string packageRoot, string path)
+        {
+            return path
+                .Substring(packageRoot.Length)
+                .Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, System.StringSplitOptions.RemoveEmptyEntries)
+                .Any(segment => segment.EndsWith("~", System.StringComparison.Ordinal));
         }
 
         private static void EnsureFolder(string path)
