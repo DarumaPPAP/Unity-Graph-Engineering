@@ -1,59 +1,78 @@
 # Roadmap
 
-## Phase 0 — Foundation
+## Phase 0 — Direction Correction
 
-- [x] Unity固有Graph Engineering Skill
-- [x] 3 Graph Architecture
-- [x] Unity Ontology初版
-- [x] Artifact Graph JSON Schema
-- [x] AssetDatabaseベースの依存ScannerとExporter
+- [x] Clarify that the product is AI-side Unity production control
+- [x] Separate Task Graph from per-node Loop
+- [x] Define Maker / Checker and Human Gate
+- [x] Add durable STATE, run log, budget, and gate policy
+- [x] Demote Artifact Scanner from Core Product to optional context experiment
 
-## Phase 1 — Artifact Graph Quality
+## Phase 1 — L1 Report Ready
 
-- [x] Node / Edgeの決定的な順序付け
-- [x] Scan ReportとDiagnostics
-- [x] Graphの逆引き「このAssetを変更すると何が影響を受けるか」
-- [x] EditMode Testの基礎Fixture
-- [ ] FakeUnity7 / Unity 6000.7.0a2でCompile・EditMode Testを実行
-- [ ] GUID・fileID単位の参照
-- [ ] Scene / Prefab階層とComponent Node
-- [ ] Material → Shader → Shader Pass → HLSL Include
-- [ ] Renderer Data → Renderer Feature → Render Pass
-- [ ] URP Asset / QualitySettings / GraphicsSettings
-- [ ] 差分ScanとCache
+- [x] Goal Contract Schema
+- [x] Task Graph Schema
+- [x] Run State Schema
+- [x] Verification Evidence Schema
+- [x] Knowledge Write-back Schema
+- [x] Unity Project Context template
+- [x] Workflow Registry for feature, rendering bug, shader, scene, and optimization
+- [x] Codex verifier starter
+- [ ] Validate all YAML/JSON files in CI
+- [ ] Add Loop Readiness audit specific to Unity production
 
-## Phase 2 — Code Graph
+## Phase 2 — FakeUnity7 Dogfood
 
-- Unity CompilationPipelineからAssembly情報を取得
-- RoslynまたはMono.Cecilによる型・メソッド依存
-- Runtime → UnityEditor参照違反
-- static濫用、循環依存、巨大責務の診断
-- MonoBehaviour / ScriptableObject / Editor Toolの分類
+- [ ] Remove the Artifact Scanner package from FakeUnity7
+- [ ] Add PROJECT_CONTEXT.md, AGENTS.md, LOOP.md, STATE.md, and KNOWLEDGE.md
+- [ ] Run one L1 report-only repository intake
+- [ ] Run one L2 assisted Unity feature task
+- [ ] Use separate compile and visual verifiers
+- [ ] Record attempts and evidence in the run log
+- [ ] Review whether the Workflow had fake edges or missing gates
 
-## Phase 3 — Rendering Graph
+## Phase 3 — Executable Verification
 
-- ShaderLab PassとLightMode
-- RenderQueue / SortingCriteria / LayerMask / ShaderTagId
-- RenderGraph Resource read/write
-- MotionVector / Depth / GBuffer / Colorの生成・消費関係
-- Shader Variant / Keyword / PSOの関係
+- [ ] Standardize Unity batchmode compile/test commands
+- [ ] Add EditMode / PlayMode result parser
+- [ ] Add log artifact capture
+- [ ] Add screenshot/camera capture contract
+- [ ] Add performance baseline/result contract
+- [ ] Produce machine-readable verifier verdicts
 
-## Phase 4 — Task Graph Runner
+## Phase 4 — Agent Harness Integration
 
-- YAMLからTask Graphを読み込む
-- Nodeの入力・出力Schema
-- 並列fan-outとjoin
-- One Writer per Artifact
-- VerifierとHuman Gate
-- Loopの最大回数とToken/Cost Budget
+- [ ] Codex starter with isolated worktree guidance
+- [ ] Claude Code starter
+- [ ] Cursor / generic skills.sh starter
+- [ ] Connector permission profiles
+- [ ] Worktree ownership and cleanup policy
+- [ ] Kill switch and daily budget enforcement
 
-## Phase 5 — Knowledge Write-back
+## Phase 5 — Knowledge and Retrieval
 
-- Bug → Cause → Fix → Verificationの保存
-- UnityVersion・Platform・PackageVersionをFactへ付与
-- PR・Commit・ログ・スクリーンショットのprovenance
-- GraphRAGで過去の修正経路を検索
+- [ ] Store Bug → Cause → Fix → Verification facts
+- [ ] Attach UnityVersion, Platform, Pipeline, PackageVersion, Source, and time
+- [ ] Preserve conflicts and superseded facts
+- [ ] Retrieve scoped facts at run start
+- [ ] Evaluate whether Graph retrieval beats repository search for multi-hop Unity questions
 
-## Phase 6 — Visual Graph Editor
+## Phase 6 — L2 Reliability
 
-データモデルと検証が安定した後に可視化を追加します。先にGraphViewを作り込まず、JSON/YAMLとQueryが実用になることを優先します。
+- [ ] Complete at least 10 real Unity runs
+- [ ] Measure success, rejection, escalation, and regression rates
+- [ ] Tune maximum attempts and worker count from observed data
+- [ ] Define safe low-risk action allowlist
+- [ ] Keep auto-merge disabled until verifier precision is demonstrated
+
+## Phase 7 — Optional Supporting Tools
+
+Only after the AI production loop is proven:
+
+- Artifact dependency extraction
+- C# call and assembly graph
+- Shader Pass / LightMode / RenderGraph resource context
+- Impact query for planning and verification selection
+- Visualization for debugging the workflow itself
+
+Supporting tools must earn their maintenance cost and must not become the project goal.
