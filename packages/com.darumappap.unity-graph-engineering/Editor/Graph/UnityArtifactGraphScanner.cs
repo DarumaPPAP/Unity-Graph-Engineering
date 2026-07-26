@@ -23,12 +23,13 @@ namespace UnityGraphEngineering
 
             var nodesByPath = new Dictionary<string, UnityArtifactNode>(StringComparer.Ordinal);
             var edgeKeys = new HashSet<string>(StringComparer.Ordinal);
+            var scheduledPaths = new HashSet<string>(StringComparer.Ordinal);
             var pendingPaths = new Queue<string>();
 
             foreach (var guid in AssetDatabase.FindAssets(string.Empty, new[] { rootAssetPath }))
             {
                 var path = AssetDatabase.GUIDToAssetPath(guid);
-                if (!string.IsNullOrEmpty(path) && !AssetDatabase.IsValidFolder(path))
+                if (!string.IsNullOrEmpty(path) && !AssetDatabase.IsValidFolder(path) && scheduledPaths.Add(path))
                     pendingPaths.Enqueue(path);
             }
 
@@ -50,7 +51,6 @@ namespace UnityGraphEngineering
                     if (AssetDatabase.IsValidFolder(dependencyPath))
                         continue;
 
-                    var wasKnown = nodesByPath.ContainsKey(dependencyPath);
                     var targetNode = GetOrCreateNode(dependencyPath, nodesByPath);
                     var edgeKey = sourceNode.Id + "|DEPENDS_ON|" + targetNode.Id;
 
@@ -65,7 +65,7 @@ namespace UnityGraphEngineering
                         });
                     }
 
-                    if (!wasKnown)
+                    if (scheduledPaths.Add(dependencyPath))
                         pendingPaths.Enqueue(dependencyPath);
                 }
             }
