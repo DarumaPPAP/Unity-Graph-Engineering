@@ -15,10 +15,15 @@ namespace UnityGraphEngineering
             if (string.IsNullOrWhiteSpace(projectRelativePath))
                 throw new ArgumentException("出力先を指定してください。", nameof(projectRelativePath));
 
-            var projectRoot = Path.GetFullPath(Directory.GetCurrentDirectory());
+            var projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
             var outputPath = Path.GetFullPath(Path.Combine(projectRoot, projectRelativePath));
-            if (!outputPath.StartsWith(projectRoot, StringComparison.OrdinalIgnoreCase))
+            var projectRootWithSeparator = projectRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+
+            if (!string.Equals(outputPath, projectRoot, StringComparison.OrdinalIgnoreCase) &&
+                !outputPath.StartsWith(projectRootWithSeparator, StringComparison.OrdinalIgnoreCase))
+            {
                 throw new InvalidOperationException("出力先はUnity Project配下に限定されています。");
+            }
 
             var directoryPath = Path.GetDirectoryName(outputPath);
             if (!string.IsNullOrEmpty(directoryPath))
