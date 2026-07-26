@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Unity Goal Contract",
+  "type": "object",
+  "required": ["goal", "deliverables", "acceptance_criteria", "must", "must_not", "unity", "verification_required", "human_gate"],
+  "properties": {
+    "goal": { "type": "string", "minLength": 1 },
+    "deliverables": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "acceptance_criteria": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "must": { "type": "array", "items": { "type": "string" } },
+    "must_not": { "type": "array", "items": { "type": "string" } },
+    "unity": {
+      "type": "object",
+      "required": ["version", "render_pipeline", "target_platforms"],
+      "properties": {
+        "version": { "type": "string" },
+        "render_pipeline": { "type": "string" },
+        "target_platforms": { "type": "array", "items": { "type": "string" } },
+        "package_versions": { "type": "object", "additionalProperties": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "verification_required": { "type": "array", "items": { "type": "string" } },
+    "human_gate": { "type": "array", "items": { "type": "string" } },
+    "assumptions": { "type": "array", "items": { "type": "string" } },
+    "non_goals": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}
