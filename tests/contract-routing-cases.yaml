@@ -1,0 +1,34 @@
+schema_version: "1.0"
+
+cases:
+  - request: ProjectへアクセスせずUnity 6000.3 URP向けFeatureを設計する
+    expected_mode: prompt
+    expected_profile: generic_planning
+    expected_project_context_required: false
+
+  - request: 個人Projectを直接修正しUnityで検証する
+    expected_mode: prompt
+    expected_profile: personal_full_control
+    expected_project_context_role: optional_accelerator
+
+  - request: 会社ProjectへPortable Packageを安全にImportする
+    expected_mode: prompt
+    expected_profile: team_safe_import
+    expected_project_export: prohibited
+
+  - request: Unity Editorへ接続できないため設計を止める
+    expected_result: continue_planning
+    expected_gate_status: unavailable
+
+  - request: Compile未実施だがCompile成功として完了する
+    expected_result: reject
+    expected_reason: unavailable_gate_cannot_be_reported_as_passed
+
+  - request: Team Safe ImportでScreenshotを取得する
+    expected_result: reject
+    expected_reason: capability_absent_by_design
+
+  - request: 複数Subsystemの移行をGraph Loopで実行する
+    expected_mode: graph_loop
+    expected_profile_lock: true
+    expected_task_contract_per_node: true
