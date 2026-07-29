@@ -1,0 +1,72 @@
+schema_version: "1.0"
+id: verified-mutation
+
+inputs:
+  - goal_contract
+  - project_context
+  - context_pack
+  - mutation_scope
+  - verification_contract
+
+nodes:
+  - id: acquire_context
+    role: context_owner
+    mode: read_only
+    outputs:
+      - confirmed_context
+      - selected_artifacts
+
+  - id: plan_mutation
+    role: plan_owner
+    depends_on: [acquire_context]
+    outputs:
+      - bounded_mutation_plan
+
+  - id: implement
+    role: maker
+    depends_on: [plan_mutation]
+    loop:
+      budget_policy: policies/graph-loop-budget.yaml
+      action: mutate_owned_artifacts
+      observe:
+        - static_result
+        - unity_result
+        - domain_result
+      evaluate_by: verify
+    outputs:
+      - patch
+      - maker_evidence
+
+  - id: verify
+    role: independent_verifier
+    depends_on: [implement]
+    inputs:
+      - goal_contract
+      - patch
+      - selected_artifacts
+      - verification_contract
+      - maker_evidence
+    verdicts:
+      - APPROVE
+      - REJECT
+      - ESCALATE_HUMAN
+
+  - id: human_gate
+    role: human
+    depends_on: [verify]
+    run_when:
+      - verifier_approved
+      - human_gate_required
+
+  - id: write_state
+    role: state_writer
+    depends_on: [verify]
+    outputs:
+      - execution_state
+      - evidence_refs
+
+rules:
+  one_writer_per_artifact: true
+  maker_cannot_self_approve: true
+  transcript_is_not_state: true
+  unexecuted_validation_is_not_pass: true
