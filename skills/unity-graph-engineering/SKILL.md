@@ -1,166 +1,144 @@
 ---
 name: unity-graph-engineering
-description: Use when an AI coding agent must plan, implement, debug, optimize, or generate content in a Unity repository. Orchestrates Unity work as a goal contract, task graph, bounded implementation loops, independent verification, human gates, and durable state. Do not use it to build a graph UI unless the user explicitly requests one.
+description: Use only after explicit user selection or approved escalation when Unity work requires multiple subsystems, independent branches, bounded iteration, runtime or visual evidence, migration, rollback, or separate verification. Owns the typed task graph and node loops. Do not use for bounded work suitable for unity-prompt-execution.
+allowed-tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+metadata:
+  version: "2.0.0"
 ---
 
-# Unity Graph Engineering
+# Unity Graph / Loop Engineering
 
-AIがUnity Repositoryへ変更を加えるときのOrchestrator Skill。
+複雑なUnity作業を、型付きTask Graphと上限付きNode Loopで制御する実行Skillです。
 
-Graphは作業のTopology、Loopは各Node内部の反復、SkillはUnity固有知識、Stateは会話外の記憶として扱う。
+このSkillは無指定依頼の既定入口ではありません。`unity-execution-router`で明示指定またはユーザー承認された場合だけ使用します。
 
-## Start Here
+## Required inputs
 
-対象Repositoryで次を順に読む。
+1. Mode decision
+2. Goal Contract
+3. Project Context
+4. UnityAgent Context Index
+5. 選択したDomain Context Pack
+6. `policies/graph-loop-budget.yaml`
+7. Human Gate
 
-1. `AGENTS.md`
-2. `PROJECT_CONTEXT.md`
-3. `STATE.md`
-4. 関連するSource / Scene / ProjectSettings
-5. このSkillのWorkflow Registry
+全Skill、全Reference、全Toolを一括で公開しません。
 
-存在しないFileは`templates/`を参考に提案するが、実装を止める必要がない場合は現在確定できるContextで進める。
-
-## Select One Workflow
-
-依頼に最も近いWorkflowを1つ選ぶ。
-
-- Runtime / Editor機能追加 → `workflows/unity-feature-implementation.yaml`
-- 描画不具合調査 → `workflows/rendering-bug-investigation.yaml`
-- Shader / HLSL / RendererFeature → `workflows/shader-development.yaml`
-- Scene / Lighting / Material生成 → `workflows/scene-generation.yaml`
-- CPU / GPU / Memory最適化 → `workflows/performance-optimization.yaml`
-
-複数Workflowを同時に始めない。主WorkflowのNodeとして必要な検証だけ取り込む。
-
-## 1. Compile the Goal
-
-実装前にGoal Contractを作る。
+## Goal Contract
 
 ```yaml
-goal: ""
+goal: []
 deliverables: []
 acceptance_criteria: []
-must: []
-must_not: []
-unity:
-  version: ""
-  render_pipeline: ""
-  target_platforms: []
-verification_required: []
-human_gate: []
-assumptions: []
+constraints:
+  environment: {}
+  allowed_mutation: []
+  forbidden_mutation: []
+compatibility: []
+required_evidence: []
+human_gates: []
+recovery: {}
 ```
 
-Repositoryから確定できる情報は質問しない。結果を左右する不明点だけユーザーへ確認する。
+コード生成やCompile成功そのものをGoalにしません。
 
-## 2. Build the Task Graph
+## Task Graph
 
-Nodeは1担当へ渡せるJobにする。Edgeは後段が前段の成果を読む場合だけ作る。
+- Nodeは一人のOwnerへ渡せる一責務Jobにする。
+- Edgeは後段が前段の型付きOutputを読む場合だけ作る。
+- Fake Edgeを削除する。
+- 一つのArtifactにWriterを一人だけ割り当てる。
+- 独立Branchがない場合は並列化しない。
+- Merge Ownerを一人に固定する。
 
 ```text
 Goal Contract
-     ↓
+    ↓
 Context / Baseline
-     ↓
-Plan Owner
-  ┌──┼──────────┐
-  ↓  ↓          ↓
-Worker A   Worker B   Worker C
-  └──┼──────────┘
-     ↓
-Independent Verifier
-     ↓
-Merge Owner
-     ↓
+    ↓
+Plan Version
+    ↓
+Independent Nodes
+    ↓
+Join / Evidence Review
+    ↓
 Human Gate
 ```
 
-Rules:
+## Node loop
 
-- Fake Edgeを削除する
-- 逐次依存は1 Workerに残す
-- 1 ArtifactにつきWriterは1人
-- 最大4 Worker
-- Merge Ownerを1人に固定
-- Artifact Graph Toolを必須にしない。通常の検索やファイル一覧で十分ならそれを使う
-
-詳細: `references/task-graphs.md`
-
-## 3. Run Bounded Loops
-
-Action Nodeは次のLoopで進める。
+LoopはNode内部だけで実行します。
 
 ```text
-Input → Action → Observe → Evaluate → Continue | Approve | Reject | Escalate
+Input -> Action -> Observe -> Evaluate
+                         ├─ Approve
+                         ├─ Local Retry
+                         ├─ Local Patch
+                         ├─ Replan
+                         └─ Escalate
 ```
 
-- 最大3 Attempt
-- 同じFailure Signatureを2回繰り返したら仮説を変更するか停止
-- Scopeを広げて失敗を隠さない
-- Testを無効化しない
-- Implementerは自分の完了を判定しない
+`policies/graph-loop-budget.yaml`のAttempt、Failure repetition、Tool、Token、外部副作用上限を適用します。
 
-詳細: `references/loop-design.md`
+## State and checkpoint
 
-## 4. Apply Unity Constraints
+会話履歴をStateとして渡しません。
 
-- Runtimeから`UnityEditor`を参照しない
-- Editor機能はEditor FolderまたはEditor-only Assemblyへ隔離
-- asmdefは境界が必要な場合だけ追加
-- private Fieldは`_camelCase`
-- Enumは`E_`、Structは`S_`
-- MonoBehaviourは1ファイル1型
-- 不要なController、Setup、自動探索、static状態を追加しない
-- ProjectSettings、URP Asset、Scene、Materialを暗黙変更しない
-- Shader / RendererFeatureではPass、LightMode、RenderQueue、Layer、Sorting、Resource read/writeを記録
-- Unity APIは公式DocumentationまたはUnityCsReferenceで確認する
-- UnityCsReferenceのSourceを転載しない
+- Graph definition
+- `STATE/current.yaml`
+- append-only event / checkpoint
+- Evidence artifact
+- Source / patch artifact
 
-## 5. Verify in a Separate Context
+Mode変更時は確認済み事実、棄却仮説、対象Artifact、残Budgetだけを型付きStateとして引き継ぎます。
 
-VerifierはMakerと別Contextで動き、次のどれかを返す。
+## Independent verification
+
+Makerとは別ContextのVerifierが次を返します。
 
 ```text
 APPROVE | REJECT | ESCALATE_HUMAN
 ```
 
-Evidenceは依頼に応じて選ぶ。
+VerifierへMakerの思考履歴全体を渡しません。Goal、Diff、対象Source、Acceptance Criteria、実行結果、Evidence、未検証事項だけを渡します。
 
-- Unity Compile
-- EditMode / PlayMode Test
-- Build
-- Missing GUID / Reference
-- Runtime / Editor Assembly Boundary
-- Screenshot / Game View Capture
-- Frame Debugger / RenderDoc
-- CPU / GPU / Memory Capture
-- Shader Variant / Keyword / Pass Evidence
+## Failure routing
 
-実行していない検証を推測でPASSにしない。
+- Compile failure: 対象Nodeの実装または依存調査
+- Runtime failure: Incident investigation
+- Visual failure: Rendering / Shader / Visual evidence
+- Performance failure: Baselineと主要仮説を再設定
+- Scope violation: Patch除去またはRevert
+- Contract conflict: Human decisionまで停止
 
-詳細: `references/unity-verification.md`
+失敗理由に関係なく同じ実装Nodeへ戻しません。
 
-## 6. Human Gate
+## Knowledge Graph
 
-`gate.yaml`を読み、Merge、Delete、ProjectSettings、Package、Scene大規模変更などを承認待ちにする。
+Knowledge Graphは候補Artifactの絞り込みに使用します。実装変更前に対象Sourceを直接読み、推論Edgeだけで原因や互換性を確定しません。
 
-ユーザーが明示的にMergeを依頼した場合のみMergeする。
+## Completion output
 
-## 7. Write State Back
+- Execution Mode: Graph / Loop
+- Goal達成状態
+- Graph versionとNode結果
+- AttemptとBudget
+- 変更Artifact
+- Verifier verdictとEvidence
+- 未検証事項
+- Recovery / Revert条件
+- Human Gate
+- State write-back
 
-作業後に対象Repositoryの`STATE.md`へOutcome、Evidence、Failure、Next Action、Human Overrideを記録する。
+## Common mistakes
 
-長期的に再利用できるFactだけを`KNOWLEDGE.md`またはKnowledge Storeへ追加する。Source、UnityVersion、Platform、PackageVersion、observed_at、confidenceを付ける。
-
-詳細: `references/knowledge-writeback.md`
-
-## Completion Output
-
-1. Goalの達成状況
-2. 実行したTask Graph
-3. Attemptと変更Artifact
-4. Verifier VerdictとEvidence
-5. 未検証事項
-6. Human Gate
-7. State / Knowledge Write-back
+- 無指定TaskをGraphへ入れる
+- 一つのNodeへ調査、実装、性能、Visual修正を混ぜる
+- Agent数を成果指標にする
+- 全Nodeへ巨大な同一Contextを渡す
+- 同じFailure Signatureを仮説変更なしで反復する
+- AIの自己申告でAPPROVEする
