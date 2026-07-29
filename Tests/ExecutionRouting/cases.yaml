@@ -1,0 +1,64 @@
+version: 1
+cases:
+  - id: EXEC-001
+    prompt: "CustomFidelityFxCas.hlslのreturn semanticsエラーだけ修正して。"
+    explicit_mode: none
+    expected_mode: prompt
+    expect_mode_change_proposal: false
+    reason: bounded known compile fix
+
+  - id: EXEC-002
+    prompt: "Graph / Loop EngineeringでTAA、Motion Vector、CASを反復検証して。"
+    explicit_mode: graph_loop
+    expected_mode: graph_loop
+    expect_mode_change_proposal: false
+    reason: explicit selection
+
+  - id: EXEC-003
+    prompt: "TAA後の眠さ、髪のジャギー、移動時の破綻を改善して。"
+    explicit_mode: none
+    expected_initial_mode: prompt
+    expect_mode_change_proposal: true
+    required_reasons:
+      - multiple_subsystems
+      - visual_comparison_required
+      - runtime_iteration_required
+    silent_switch_forbidden: true
+
+  - id: EXEC-004
+    prompt: "このRendererFeatureが何をしているか説明して。変更しないで。"
+    explicit_mode: none
+    expected_mode: prompt
+    expect_task_graph: false
+    expect_durable_state: false
+
+  - id: EXEC-005
+    prompt: "Promptのまま調査だけ続けて。"
+    explicit_mode: prompt
+    expected_mode: prompt
+    prompt_override:
+      read_only: true
+      scope_expansion: false
+      mutation_attempts: 0
+
+  - id: EXEC-006
+    prompt: "自動選択して。Switch実機だけTransparentがOpaqueになる原因を調査して。"
+    explicit_mode: auto
+    expected_initial_mode: prompt
+    expect_mode_change_proposal: true
+    silent_switch_forbidden: true
+
+  - id: EXEC-007
+    prompt: "単一ファイル修正として始めたが、2つ目のSubsystem変更が必要になった。"
+    explicit_mode: none
+    expected_initial_mode: prompt
+    runtime_event: second_subsystem_mutation_required
+    expect_mode_change_proposal: true
+
+  - id: EXEC-008
+    prompt: "Graph / Loopへ変更を承認する。"
+    explicit_mode: approved_escalation
+    expected_mode: graph_loop
+    expected_state_transfer:
+      transcript: false
+      typed_state: true
