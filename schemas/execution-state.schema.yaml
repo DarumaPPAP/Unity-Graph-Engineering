@@ -4,17 +4,37 @@ type: object
 required:
   - run_id
   - execution_mode
+  - execution_profile
+  - task_contract_id
   - status
   - goal
+  - quality_gates
   - budget
 properties:
   run_id:
     type: string
   execution_mode:
     enum: [prompt, graph_loop]
+  execution_profile:
+    enum: [generic_planning, personal_full_control, team_safe_import]
+  task_contract_id:
+    type: string
+    pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+  domain_route:
+    type: [string, "null"]
+  primary_knowledge_id:
+    type: [string, "null"]
+  related_knowledge_ids:
+    type: array
+    items:
+      type: string
   mode_selection_source:
     enum: [default, explicit, approved_escalation]
+  profile_selection_source:
+    enum: [default, explicit, policy]
   mode_locked_for_goal:
+    type: boolean
+  profile_locked_for_goal:
     type: boolean
   graph_version:
     type: integer
@@ -31,6 +51,21 @@ properties:
     type: array
     items:
       type: string
+  unresolved_project_bindings:
+    type: array
+    items:
+      type: object
+      required:
+        - id
+        - resolution
+      properties:
+        id:
+          type: string
+        resolution:
+          enum: [resolve_during_import, resolve_before_mutation, human_selection]
+        guessed:
+          const: false
+      additionalProperties: false
   rejected_hypotheses:
     type: array
     items:
@@ -46,6 +81,27 @@ properties:
     type: array
     items:
       type: string
+  quality_gates:
+    type: array
+    items:
+      type: object
+      required:
+        - gate
+        - status
+      properties:
+        gate:
+          type: string
+        status:
+          enum: [passed, failed, unavailable]
+        evidence_id:
+          type: [string, "null"]
+        reason:
+          type: [string, "null"]
+        remaining_validation:
+          type: array
+          items:
+            type: string
+      additionalProperties: false
   last_evidence:
     type: [object, "null"]
     properties:
