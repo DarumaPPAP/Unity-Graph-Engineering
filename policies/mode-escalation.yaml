@@ -1,0 +1,44 @@
+schema_version: "1.0"
+
+hard_triggers:
+  package_change_required: true
+  project_settings_change_required: true
+  render_pipeline_architecture_change: true
+  target_device_iteration_required: true
+  destructive_migration_required: true
+  multiple_independent_writers_required: true
+
+score_threshold: 4
+
+scores:
+  root_cause_unknown: 2
+  multiple_subsystems: 2
+  runtime_iteration_required: 2
+  visual_comparison_required: 2
+  performance_measurement_required: 2
+  platform_specific_reproduction: 2
+  independent_parallel_branches: 1
+  more_than_three_primary_artifacts: 1
+
+proposal_contract:
+  include:
+    - current_mode
+    - proposed_mode
+    - reasons
+    - expected_benefits
+    - expected_costs
+    - prompt_limited_scope
+    - preserved_typed_state
+  choices:
+    - graph_loop
+    - prompt_limited
+    - read_only_then_reassess
+
+confirmation:
+  required: true
+  ask_once_per_goal: true
+  unlock_when:
+    - goal_changed
+    - destructive_scope_added
+    - required_evidence_changed
+    - budget_exhausted
