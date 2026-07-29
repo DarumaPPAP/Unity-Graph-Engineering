@@ -1,0 +1,44 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: Unity AI Optional Capability Manifest
+type: object
+required:
+  - schema_version
+  - capabilities
+properties:
+  schema_version:
+    type: string
+  source:
+    enum: [manual, generated, merged]
+  required_for_planning:
+    const: false
+  capabilities:
+    type: object
+    additionalProperties:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          enum: [available, unavailable, unknown, prohibited]
+        detection:
+          enum: [manual, detected, probed, policy]
+        last_probe:
+          type: [string, "null"]
+        limitations:
+          type: array
+          items:
+            type: string
+        evidence:
+          type: array
+          items:
+            type: string
+      additionalProperties: false
+  project_context:
+    type: object
+    properties:
+      status:
+        enum: [available, unavailable, prohibited]
+      role:
+        enum: [optional_accelerator, prohibited]
+    additionalProperties: false
+additionalProperties: false
