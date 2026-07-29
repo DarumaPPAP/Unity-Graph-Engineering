@@ -1,26 +1,47 @@
-schema_version: "1.0"
+schema_version: "2.0"
 id: verified-mutation
 
 inputs:
-  - goal_contract
-  - project_context
-  - context_pack
-  - mutation_scope
-  - verification_contract
+  required:
+    - goal_contract
+    - execution_profile
+    - task_contract
+    - mutation_scope
+    - verification_contract
+  optional:
+    - project_context
+    - capability_manifest
+    - context_pack
+    - primary_knowledge
+    - related_knowledge
 
 nodes:
   - id: acquire_context
     role: context_owner
     mode: read_only
+    rules:
+      project_context_absence: continue_with_manual_inputs
+      capability_manifest_absence: continue_with_declared_unavailable_gates
+      unresolved_binding: record_do_not_guess
     outputs:
       - confirmed_context
+      - unresolved_project_bindings
       - selected_artifacts
+      - available_capabilities
 
   - id: plan_mutation
     role: plan_owner
     depends_on: [acquire_context]
+    inputs:
+      - execution_profile
+      - task_contract
+      - confirmed_context
+      - unresolved_project_bindings
     outputs:
       - bounded_mutation_plan
+      - authoritative_mutation_channels
+      - required_quality_gates
+      - import_or_integration_bindings
 
   - id: implement
     role: maker
@@ -32,24 +53,33 @@ nodes:
         - static_result
         - unity_result
         - domain_result
+      unavailable_observation:
+        status: unavailable
+        continue_when_task_contract_allows: true
       evaluate_by: verify
     outputs:
       - patch
       - maker_evidence
+      - unavailable_gates
 
   - id: verify
     role: independent_verifier
     depends_on: [implement]
     inputs:
       - goal_contract
+      - execution_profile
+      - task_contract
       - patch
       - selected_artifacts
       - verification_contract
       - maker_evidence
+      - unavailable_gates
+    evidence_policy: policies/evidence-admission.yaml
     verdicts:
       - APPROVE
       - REJECT
       - ESCALATE_HUMAN
+      - INTEGRATION_VALIDATION_REQUIRED
 
   - id: human_gate
     role: human
@@ -57,6 +87,7 @@ nodes:
     run_when:
       - verifier_approved
       - human_gate_required
+      - execution_profile_change_requested
 
   - id: write_state
     role: state_writer
@@ -64,9 +95,13 @@ nodes:
     outputs:
       - execution_state
       - evidence_refs
+      - remaining_validation
 
 rules:
   one_writer_per_artifact: true
   maker_cannot_self_approve: true
   transcript_is_not_state: true
   unexecuted_validation_is_not_pass: true
+  project_context_is_not_required_for_planning: true
+  unavailable_gate_is_not_pass: true
+  team_safe_import_project_export_is_prohibited: true

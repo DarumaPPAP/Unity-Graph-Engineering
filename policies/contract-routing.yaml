@@ -1,0 +1,71 @@
+schema_version: "1.0"
+domain_contract_source: DarumaPPAP/UnityAgent/.ai/context-index.yaml
+
+selection_order:
+  - execution_mode
+  - execution_profile
+  - primary_task_contract
+  - primary_domain_route
+  - primary_knowledge
+  - conditional_related_knowledge
+
+execution_profiles:
+  generic_planning:
+    select_when:
+      - project_is_not_accessible
+      - external_authoring_requested
+      - portable_package_requested
+    project_context_required: false
+    capability_manifest_required: false
+    unresolved_bindings: record_and_continue
+
+  personal_full_control:
+    select_when:
+      - personal_project_access_is_authorized
+      - direct_implementation_requested
+    project_context_required: false
+    project_context_role: optional_accelerator
+    capability_manifest_required: false
+    unavailable_tool_fallback: continue_with_manual_inputs_and_source
+
+  team_safe_import:
+    select_when:
+      - company_project_external_authoring
+      - staging_import_requested
+    project_context_required: false
+    project_export: prohibited
+    personal_tool_dependency: prohibited
+    allowed_direction: portable_package_to_project_only
+
+routing_rules:
+  one_primary_task_contract: true
+  one_primary_domain_route: true
+  at_most_one_primary_knowledge: true
+  related_knowledge_requires_condition: true
+  project_context_absence_does_not_block_planning: true
+  capability_absence_does_not_block_planning: true
+  unresolved_project_binding_must_not_be_guessed: true
+  direct_mutation_requires_resolved_target_and_authoritative_channel: true
+
+team_safe_import_absent_capabilities:
+  - project_scanner
+  - source_export
+  - screenshot_capture
+  - hierarchy_export
+  - unity_project_id_access
+  - git_access
+  - issue_access
+  - cloud_settings_access
+  - environment_variable_access
+  - organization_metadata_access
+  - customer_metadata_access
+
+mode_interaction:
+  prompt:
+    default: true
+    task_contract_required: true
+    persistent_graph_state: false
+  graph_loop:
+    task_contract_required_per_node: true
+    profile_locked_for_goal: true
+    profile_change_requires_human_approval: true

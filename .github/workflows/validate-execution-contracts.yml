@@ -1,0 +1,58 @@
+name: Validate Execution Contracts
+
+on:
+  pull_request:
+    paths:
+      - "policies/**"
+      - "schemas/**"
+      - "workflow-templates/**"
+      - "tests/**"
+      - ".github/workflows/validate-execution-contracts.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "policies/**"
+      - "schemas/**"
+      - "workflow-templates/**"
+      - "tests/**"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install YAML parser
+        run: python -m pip install --disable-pip-version-check pyyaml
+
+      - name: Validate YAML syntax
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+
+          roots = [Path('policies'), Path('schemas'), Path('workflow-templates'), Path('tests')]
+          paths = []
+          for root in roots:
+              paths.extend(sorted(root.rglob('*.yaml')))
+          for path in paths:
+              with path.open(encoding='utf-8') as stream:
+                  yaml.safe_load(stream)
+              print(f'validated: {path}')
+          PY
+
+      - name: Assert required contract files
+        run: |
+          test -f policies/contract-routing.yaml
+          test -f policies/evidence-admission.yaml
+          test -f schemas/capability-manifest.schema.yaml
+          test -f schemas/execution-state.schema.yaml
+          test -f workflow-templates/verified-mutation.yaml
+          test -f tests/contract-routing-cases.yaml

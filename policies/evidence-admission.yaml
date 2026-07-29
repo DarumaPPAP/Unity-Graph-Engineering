@@ -1,0 +1,83 @@
+schema_version: "1.0"
+
+gate_statuses:
+  - passed
+  - failed
+  - unavailable
+
+admission_rules:
+  passed:
+    requires:
+      - executed_gate
+      - evidence_reference
+      - scope_statement
+    may_support_completion: true
+
+  failed:
+    requires:
+      - executed_gate
+      - failure_summary
+      - recovery_or_stop_action
+    may_support_completion: false
+
+  unavailable:
+    requires:
+      - unavailable_reason
+      - remaining_validation
+      - claim_scope_reduction
+    may_support_completion: conditional
+    may_be_reported_as_passed: false
+    blocks_planning: false
+
+completion_rules:
+  static_only_output:
+    allowed_when:
+      - project_is_not_accessible
+      - unity_capability_is_unavailable
+    required_label: integration_validation_required
+
+  runtime_claim:
+    requires_any:
+      - playmode
+      - player
+      - target_device
+
+  visual_claim:
+    requires_any:
+      - fixed_condition_capture
+      - graphics_compare
+      - human_visual_review
+
+  performance_claim:
+    requires:
+      - baseline_measurement
+      - candidate_measurement
+      - fixed_conditions
+
+  target_device_claim:
+    requires:
+      - named_target_device_evidence
+
+forbidden_admissions:
+  - ai_self_report_without_artifact
+  - compile_as_runtime_proof
+  - editor_as_target_device_proof
+  - screenshot_generation_as_visual_acceptance
+  - unavailable_gate_as_success
+
+team_safe_import:
+  exported_report_fields:
+    - package_id
+    - package_version
+    - result_codes
+    - manual_steps_count
+  forbidden_report_fields:
+    - project_name
+    - project_path
+    - scene_name
+    - source_path
+    - screenshot
+    - organization
+    - customer
+    - issue_id
+    - unity_project_id

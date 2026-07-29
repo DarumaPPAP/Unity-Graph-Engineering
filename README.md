@@ -1,28 +1,27 @@
 # Unity AI Execution Engineering
 
-Unity制作AIの**実行方式・予算・状態・検証・回復**を管理するRepositoryです。
+Unity制作AIの**実行方式・接続Profile・Task Contract・予算・状態・検証・回復**を管理するRepositoryです。
 
 すべてのTaskをGraph化しません。普段はPrompt Engineering、複雑案件だけGraph / Loop Engineeringを使用します。
 
 ```text
 User Request
     ↓
-Execution Router
-    ├─ Prompt Engineering【既定】
-    │    ├─ Minimal Context
-    │    ├─ One Mutation Scope
-    │    └─ Deterministic Verification
-    │
+Execution Mode
+    ├─ Prompt【既定】
     └─ Graph / Loop【明示指定または承認後】
-         ├─ Goal Contract
-         ├─ Typed Task Graph
-         ├─ Bounded Node Loops
-         ├─ Independent Verifier
-         ├─ Human Gate
-         └─ State / Evidence Write-back
+    ↓
+Execution Profile
+    ├─ Generic Planning
+    ├─ Personal Full-Control
+    └─ Team Safe Import
+    ↓
+UnityAgent Task Contract / Domain Route / Knowledge Contract
+    ↓
+Mutation and Quality Gates
 ```
 
-Unity固有のC#、URP、RenderGraph、Shader、Variant、Performance、Visual Directionは`DarumaPPAP/UnityAgent`へ委譲します。
+Unity固有のC#、URP、RenderGraph、Shader、Variant、Performance、Visual Direction、Knowledge YAML、Task Contractは`DarumaPPAP/UnityAgent`へ委譲します。
 
 ## Execution modes
 
@@ -36,8 +35,9 @@ Unity固有のC#、URP、RenderGraph、Shader、Variant、Performance、Visual D
 - 単一ファイルまたは局所修正
 - 原因確定済みエラー
 - 明確な小規模実装
+- Project非参照のPortable設計
 
-Task Graph、複数Worker、永続Checkpointを作らず、必要なContext Packと対象Sourceだけを読みます。
+Task Graph、複数Worker、永続Checkpointを作らず、一つのTask Contract、必要なContext Pack、対象Sourceだけを読みます。
 
 ### Graph / Loop Engineering
 
@@ -53,6 +53,28 @@ Task Graph、複数Worker、永続Checkpointを作らず、必要なContext Pack
 
 無指定のPrompt Taskから無断で切り替えません。変更理由、利点、追加コスト、Prompt限定継続案を提示し、ユーザー承認を得ます。
 
+## Execution profiles
+
+Execution Modeとは別に、Projectとの接続形態を管理します。
+
+| Profile | 用途 | Project Context |
+|---|---|---|
+| `generic_planning` | Project非参照の設計、Portable成果物 | 不要 |
+| `personal_full_control` | 個人Projectの直接実装、Unity検証、Git | Optional |
+| `team_safe_import` | 会社Projectへの一方向Staging Import | 禁止 |
+
+### Generic Planning
+
+Unity Version、Render Pipeline、Platform、Goal、Constraints、禁止事項、期待結果の最小手動入力だけで計画します。Project固有Path、Scene、Renderer Data、Layer、ShaderTagは未解決Bindingとして残し、推測しません。
+
+### Personal Full-Control
+
+Project Context GeneratorとUnity Command SurfaceはOptionalな加速装置です。利用不能でもTaskを中止せず、手動要件とSourceから継続します。
+
+### Team Safe Import
+
+Personal Toolとは別製品とし、Project Scanner、Source Export、Screenshot、Hierarchy、Unity Project ID、Git、Issue、Cloud、Environment Variable、組織情報、顧客情報へのアクセス機能を持ちません。禁止情報はReport Schemaにも追加しません。
+
 ## Core files
 
 ```text
@@ -61,7 +83,9 @@ policies/
 ├─ execution-mode.yaml
 ├─ prompt-budget.yaml
 ├─ graph-loop-budget.yaml
-└─ mode-escalation.yaml
+├─ mode-escalation.yaml
+├─ contract-routing.yaml
+└─ evidence-admission.yaml
 
 skills/
 ├─ unity-execution-router/
@@ -70,29 +94,55 @@ skills/
 
 schemas/
 ├─ execution-state.schema.yaml
-└─ evidence.schema.yaml
+├─ evidence.schema.yaml
+└─ capability-manifest.schema.yaml
 
 workflow-templates/
 └─ verified-mutation.yaml
+
+tests/
+└─ contract-routing-cases.yaml
 ```
 
-## Context ownership
-
-Execution側はUnityAgent全体を一括読込しません。
+## Contract routing
 
 ```text
 Request
   ↓
-UnityAgent Context Index
+Execution Profile
   ↓
-Domain Context Pack
+One Primary Task Contract
   ↓
-Knowledge Graph Query【必要時】
+One Primary Domain Route
   ↓
-対象Sourceを直接精読
+Zero or One Primary Knowledge
+  ↓
+Conditional Related Knowledge
 ```
 
-Knowledge Graphは読む候補を絞る索引です。推論Edgeだけで原因や互換性を確定しません。
+UnityAgent全体を一括読込しません。Related Knowledgeは依存条件が成立した場合だけ追加します。人間向けHTML Knowledge Productは、設計理由、実験、比較、Visual Reference、Decision履歴が必要な場合だけ参照します。
+
+正本:
+
+- `policies/contract-routing.yaml`
+- `DarumaPPAP/UnityAgent/.ai/context-index.yaml`
+
+## Project Context and capabilities
+
+Project ContextやCapability Manifestは計画の必須条件ではありません。
+
+```text
+Minimal Manual Requirements
+→ Planning
+
+Project Source
+→ Direct Implementation
+
+Unity Tool
+→ Automated Validation
+```
+
+Capability Manifestは存在する場合だけ利用し、`available`、`unavailable`、`unknown`、`prohibited`を区別します。
 
 ## Budget
 
@@ -120,11 +170,39 @@ STATE/checkpoints/
 Evidence/
 ```
 
-Stateは現在位置、Evidenceは判断根拠です。AIの自己申告だけではAPPROVEしません。
+Execution StateにはExecution Profile、Task Contract ID、Primary Knowledge、未解決Project Binding、Quality Gateを保存します。
+
+Quality Gateの状態:
+
+- `passed`
+- `failed`
+- `unavailable`
+
+`unavailable`は計画を止めませんが、成功とは扱いません。理由、Claim Scope縮小、残検証を必ず記録します。
+
+正本:
+
+- `schemas/execution-state.schema.yaml`
+- `policies/evidence-admission.yaml`
+
+## Team Safe Import evidence
+
+外部へ出せるReportはPackage ID、Version、結果Code、手動手順数などに限定します。
+
+含めないもの:
+
+- Project名とPath
+- Scene名
+- Source Path
+- Screenshot
+- Organization
+- Customer
+- Issue ID
+- Unity Project ID
 
 ## Human gates
 
-PR Merge、main直接Push、File削除、Package、ProjectSettings、Render Pipeline、Scene大規模変更、品質と性能のTrade-off、実機品質の最終承認はHuman Gateです。
+PR Merge、main直接Push、File削除、Package、ProjectSettings、Render Pipeline、Scene大規模変更、品質と性能のTrade-off、実機品質の最終承認、Execution Profile変更はHuman Gateです。
 
 ## Pilot KPI
 
@@ -136,5 +214,6 @@ PR Merge、main直接Push、File削除、Package、ProjectSettings、Render Pipe
 - Verifier品質低下: 0
 - Silent Mode Switch: 0
 - Unbounded Retry: 0
+- Unavailable Gateの成功誤報: 0
 
-公開事例の最大値をそのまま目標にせず、Unity TaskのA/B比較で採用判断します。
+公開事例の最大値をそのまま目標にせず、同一Unity Task、同一Source Revision、同一Acceptance CriteriaのA/B比較で採用判断します。
