@@ -1,122 +1,99 @@
-# AGENTS.md
+# Unity AI Execution Bootstrap
 
-このRepositoryのSkillまたはWorkflowを使ってUnity制作を行うAgentは、次の契約を必ず守る。
+このRepositoryはUnity制作AIの実行方式、予算、状態、検証、回復を管理する正本です。Unity固有の実装知識は`DarumaPPAP/UnityAgent`へ委譲します。
 
-## 1. 開始条件
+## 1. Default execution mode
 
-実装前に対象Repositoryから次を読む。
+- モード指定がない依頼は`prompt`で開始する。
+- `graph_loop`へ無断で切り替えない。
+- Promptでは安全に完遂できないと判断した場合、理由、利点、追加コスト、限定継続案を提示してユーザー確認を得る。
+- `auto`はユーザーが明示的に指定した場合だけ使用する。
 
-1. `AGENTS.md`
-2. `PROJECT_CONTEXT.md`
-3. `STATE.md`
-4. 対象コード・Scene・ProjectSettings
-5. 使用するWorkflow
+正本:
 
-存在しない文書は勝手に補完せず、Repositoryから確定できる事実だけで初期Contextを作る。
+- `policies/execution-mode.yaml`
+- `policies/mode-escalation.yaml`
+- `skills/unity-execution-router/SKILL.md`
 
-## 2. Goal Contract
+## 2. Prompt execution
 
-ユーザーの依頼を次へ変換する。
+局所修正、説明、原因確定済みのエラー、明確な小規模実装は`unity-prompt-execution`を使用する。
 
-- Goal
-- Deliverables
-- Acceptance criteria
-- Must
-- Must not
-- Unity version
-- Render Pipeline
-- Target platform
-- Verification evidence
-- Human gate
+- 一つのPrimary Skill
+- 一つのMutation scope
+- 一つのWriter
+- 必要最小Context
+- 決定的なValidator、Compile、Testを優先
+- 大規模Task Graph、永続Checkpoint、複数Workerを作らない
 
-曖昧でも安全に進められる項目は仮定として明記する。結果を左右する不明点だけ確認する。
+Budgetは`policies/prompt-budget.yaml`を正本とする。
 
-## 3. Task Graph
+## 3. Graph / Loop execution
 
-- Nodeは1つの担当へ渡せるJobにする
-- Edgeは後段が前段の成果を読む場合だけ作る
-- 独立していない作業を並列化しない
-- 1 ArtifactにつきWriterは1人
-- Merge Ownerを1人に固定する
-- Agent数を成果指標にしない
+複数Subsystem、原因不明、性能・Visual反復、Platform差、Migration、Rollback、独立Branch、Human Gateが必要な場合だけ`unity-graph-engineering`を使用する。
 
-## 4. Loop
+- GraphはNode間の依存とFailure Domainを所有する。
+- Loopは一つのNode内部へ閉じ込める。
+- 一つのArtifactにWriterを一人だけ割り当てる。
+- MakerとVerifierを分離する。
+- Node、Attempt、Tool、Token、外部副作用へ上限を設定する。
+- StateとEvidenceを会話履歴から分離する。
 
-各実装Nodeは次を持つ。
+Budgetは`policies/graph-loop-budget.yaml`を正本とする。
 
-```text
-Input → Action → Observe → Evaluate → Continue | Approve | Reject | Escalate
-```
+## 4. Unity domain delegation
 
-- 最大3回まで
-- 同じ失敗を2回繰り返したら停止
-- Testを無効化して通過させない
-- Scopeを広げて問題を隠さない
-- 実装者は自分の作業を完了判定しない
+Unityの命名、C#、URP、RenderGraph、Shader、Variant、Runtime Evidence、Visual DirectionはUnityAgentのContext Indexから必要なContext Packだけを取得する。
 
-## 5. Unity実装規約
+- UnityAgent全体を一括で読まない。
+- Knowledge Graphは候補ファイル選定にだけ使う。
+- 実装変更前に対象Sourceを直接読む。
+- Graph Report全体をPromptへ投入しない。
 
-- Runtimeから`UnityEditor` APIを参照しない
-- Editor機能はEditor FolderまたはEditor-only Assemblyへ隔離
-- asmdefは境界が必要な場合だけ追加
-- private Fieldは`_camelCase`
-- Enumは`E_`、Structは`S_`
-- Structは値型の利点が明確な場合だけ使う
-- MonoBehaviourは1ファイル1型
-- 不要なController、Setup関数、自動探索、static状態を追加しない
-- ProjectSettings、URP Asset、Scene、Materialを暗黙変更しない
-- Shader関数引数は可能な限り1行
-- 本番Commentは意図・制約・危険箇所に限定する
+## 5. State and evidence
 
-## 6. Independent Verification
+Graph / Loopでは次を分離する。
 
-Verifierは実装者と別Contextで実行する。
+- Graph definition
+- `STATE/current.yaml`
+- append-only event / checkpoint
+- Evidence artifact
+- Source / patch artifact
 
-Verifierの出力は次のいずれか。
+Schema:
 
-```text
-APPROVE
-REJECT
-ESCALATE_HUMAN
-```
+- `schemas/execution-state.schema.yaml`
+- `schemas/evidence.schema.yaml`
 
-判定には実行したCommand、Test結果、Console、Screenshot、Profiler値などのEvidenceを添える。自己申告だけではAPPROVEしない。
+実行していない検証をPASSにしない。AIの自己申告だけをEvidenceにしない。
 
-## 7. Human Gate
+## 6. Human gates
 
 次はユーザー承認なしに実行しない。
 
 - PR merge
 - mainへの直接Push
-- Asset削除
-- Sceneの大規模置換
+- AssetまたはFile削除
+- Package追加・更新・削除
 - ProjectSettings変更
 - Render Pipeline Asset差し替え
-- Package追加・更新・削除
-- Build配布
+- Scene / Prefabの大規模置換
+- 品質と性能のTrade-off確定
+- 実機品質の最終承認
 
-## 8. State Write-back
+ユーザーが今回の依頼で明示的に承認した操作は、同一Goal内で再確認しない。
 
-作業終了時に`STATE.md`へ次を残す。
+## 7. Completion
 
-- 完了したGoal
+最終報告には次を含める。
+
+- Execution Modeと選択理由
+- Goal達成状態
 - 変更Artifact
-- Verification Evidence
-- 未検証事項
-- 失敗した試行
-- 次のAction
-- Human override
+- 実施した検証
+- Evidenceまたは未検証事項
+- 消費Budgetと停止理由
+- Revert条件
+- Human Gate
 
-Chat履歴だけを状態保存先にしない。
-
-## 9. Completion Report
-
-最終報告は次の順にする。
-
-1. 何を達成したか
-2. Task Graphの実行結果
-3. 変更Artifact
-4. Verification Evidence
-5. 未検証事項
-6. Human Gate
-7. State / Knowledge Write-back
+成功だけでなく、そこへ到達した経路と消費量を記録する。

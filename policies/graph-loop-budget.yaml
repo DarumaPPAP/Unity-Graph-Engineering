@@ -1,0 +1,47 @@
+schema_version: "1.0"
+mode: graph_loop
+
+run_limits:
+  max_parallel_nodes: 3
+  max_graph_replans: 1
+  max_verifier_retries: 1
+  max_external_side_effects: 1
+
+node_defaults:
+  max_attempts: 2
+  max_identical_failure_repetitions: 1
+  max_context_expansion_hops: 2
+  max_file_reads: 12
+  max_tool_calls: 30
+
+accounting:
+  - input_tokens
+  - output_tokens
+  - cached_tokens
+  - tool_calls
+  - file_reads
+  - node_attempts
+  - wall_clock
+  - external_side_effects
+
+admission_control:
+  before_node_start: true
+  require_budget_reservation: true
+  reject_when_remaining_budget_is_insufficient: true
+
+stop_conditions:
+  - same_failure_repeated_without_new_hypothesis
+  - acceptance_criteria_not_observable
+  - required_device_asset_package_license_or_credential_unavailable
+  - goal_contract_change_required
+  - destructive_change_requires_unresolved_human_gate
+
+on_stop:
+  verdict: ESCALATE_HUMAN
+  preserve:
+    - current_state
+    - collected_evidence
+    - rejected_hypotheses
+    - inspected_artifacts
+    - remaining_budget
+    - smallest_required_decision

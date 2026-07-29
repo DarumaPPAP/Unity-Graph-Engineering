@@ -1,0 +1,35 @@
+schema_version: "1.0"
+mode: prompt
+
+limits:
+  max_initial_file_reads: 6
+  max_total_file_reads: 10
+  max_context_expansion_hops: 1
+  max_primary_artifacts: 3
+  max_hypotheses: 2
+  max_mutation_attempts: 2
+  max_tool_calls: 20
+  max_parallel_workers: 1
+
+required_behavior:
+  one_primary_skill: true
+  one_writer: true
+  one_mutation_scope: true
+  prefer_deterministic_validation: true
+  create_task_graph: false
+  create_durable_checkpoint: false
+
+stop_and_propose_graph_loop_when:
+  - second_primary_hypothesis_rejected
+  - second_subsystem_mutation_required
+  - requested_scope_must_expand
+  - runtime_visual_or_performance_iteration_required
+  - deterministic_completion_evidence_unavailable
+  - any_limit_would_be_exceeded
+
+on_limit:
+  action: request_mode_decision
+  allowed_options:
+    - switch_to_graph_loop
+    - continue_prompt_with_reduced_scope
+    - continue_read_only_investigation

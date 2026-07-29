@@ -1,0 +1,54 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: Unity AI Execution Metrics
+type: object
+required:
+  - run_id
+  - execution_mode
+  - task_class
+  - verifier_verdict
+properties:
+  run_id:
+    type: string
+  execution_mode:
+    enum: [prompt, graph_loop]
+  task_class:
+    type: string
+  framework_input_tokens:
+    type: integer
+    minimum: 0
+  retrieved_context_tokens:
+    type: integer
+    minimum: 0
+  source_input_tokens:
+    type: integer
+    minimum: 0
+  output_tokens:
+    type: integer
+    minimum: 0
+  cached_tokens:
+    type: integer
+    minimum: 0
+  tool_calls:
+    type: integer
+    minimum: 0
+  file_reads:
+    type: integer
+    minimum: 0
+  graph_queries:
+    type: integer
+    minimum: 0
+  attempts:
+    type: integer
+    minimum: 0
+  verifier_verdict:
+    enum: [APPROVE, REJECT, ESCALATE_HUMAN, NOT_RUN]
+  user_override:
+    type: boolean
+  mode_escalated:
+    type: boolean
+  elapsed_seconds:
+    type: number
+    minimum: 0
+  measurement_source:
+    enum: [provider_usage, tokenizer_estimate, manual]
+additionalProperties: false

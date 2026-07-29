@@ -1,60 +1,45 @@
-# Loop Budget
+# Execution Budget Compatibility Guide
 
-## Default Limits
+Budgetの機械可読正本は次です。
 
-| Limit | Value |
-|---|---:|
-| Parallel workers | 4 |
-| Implementation attempts per node | 3 |
-| Identical failure repetitions | 2 |
-| Verifier retries | 1 |
-| Auto-created PRs per run | 1 |
-| Auto-merge | 0 |
+- Prompt Engineering: `policies/prompt-budget.yaml`
+- Graph / Loop Engineering: `policies/graph-loop-budget.yaml`
+- Mode変更判定: `policies/mode-escalation.yaml`
 
-## Time and Context Budget
+このFileへ数値を重複定義しません。
 
-- Context acquisition must stop when the Goal Contract can be evaluated.
-- Do not scan the entire Repository when scoped search answers the question.
-- Large logs are summarized with exact error excerpts and source paths.
-- Each Worker receives only the context needed for its owned artifacts.
-- A Worker may request more context, but must state which decision depends on it.
+## Prompt
 
-## Attempt Budget
+- 一つのPrimary Skill
+- 一つのWriter
+- 最大3 Primary Artifact
+- 最大2 Hypothesis
+- 最大2 Mutation Attempt
+- Context拡張は1 Hop
+- 上限超過前にGraph / Loop変更確認
 
-An attempt counts when source files or project assets are changed and verification is run.
+## Graph / Loop
 
-Stop immediately when:
+- 最大3 Parallel Node
+- Nodeあたり最大2 Attempt
+- 同一Failureの無仮説反復は禁止
+- Graph Replanは最大1回
+- Verifier Retryは最大1回
+- 新しいNode開始前に残Budgetを確認
 
-- the same failure signature appears twice without a changed hypothesis
-- the requested outcome cannot be measured
-- required device, license, package, asset, or credential is unavailable
-- a denylisted path must change without human approval
-- the fix requires changing the Goal Contract
+## Accounting
 
-## Parallelism Budget
+次をRunとNodeの両方で記録します。
 
-Parallelize only work that does not consume another Worker's output and does not write the same artifact.
+- input / output / cached tokens
+- tool calls
+- file reads
+- attempts
+- wall clock
+- external side effects
 
-Good candidates:
+正確なProvider Token Usageを取得できない場合は推定値と明記し、実測値と混同しません。
 
-- Unity official API research
-- Repository convention inspection
-- independent visual reference analysis
-- independent performance evidence review
+## Stop
 
-Keep sequential:
-
-- Shader interface design followed by dependent HLSL implementation
-- Scene generation followed by visual correction
-- Root cause hypothesis followed by targeted fix
-- ProjectSettings change followed by build verification
-
-## Escalation
-
-Use `ESCALATE_HUMAN` when limits are reached. Include:
-
-- attempts made
-- evidence collected
-- rejected hypotheses
-- remaining uncertainty
-- smallest decision needed from the user
+Budget上限、観測不能なAcceptance、必要なDevice・Asset・Credential不足、Goal Contract変更、未承認Human Gateでは停止します。停止時はEvidence、棄却仮説、残Budget、最小の人間判断を保存します。

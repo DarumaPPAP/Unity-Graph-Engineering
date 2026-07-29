@@ -1,0 +1,89 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: Unity AI Execution State
+type: object
+required:
+  - run_id
+  - execution_mode
+  - status
+  - goal
+  - budget
+properties:
+  run_id:
+    type: string
+  execution_mode:
+    enum: [prompt, graph_loop]
+  mode_selection_source:
+    enum: [default, explicit, approved_escalation]
+  mode_locked_for_goal:
+    type: boolean
+  graph_version:
+    type: integer
+    minimum: 1
+  current_node:
+    type: [string, "null"]
+  status:
+    enum: [intake, ready, running, rejected, blocked, awaiting_human, accepted]
+  goal:
+    type: array
+    items:
+      type: string
+  confirmed_facts:
+    type: array
+    items:
+      type: string
+  rejected_hypotheses:
+    type: array
+    items:
+      type: string
+  active_hypothesis:
+    type: [object, "null"]
+    properties:
+      id:
+        type: string
+      statement:
+        type: string
+  artifacts:
+    type: array
+    items:
+      type: string
+  last_evidence:
+    type: [object, "null"]
+    properties:
+      evidence_id:
+        type: string
+      verdict:
+        enum: [APPROVE, REJECT, ESCALATE_HUMAN, NOT_RUN]
+      summary:
+        type: string
+  budget:
+    type: object
+    required:
+      - tool_calls
+      - file_reads
+      - node_attempts
+    properties:
+      input_tokens:
+        type: integer
+        minimum: 0
+      output_tokens:
+        type: integer
+        minimum: 0
+      cached_tokens:
+        type: integer
+        minimum: 0
+      tool_calls:
+        type: integer
+        minimum: 0
+      file_reads:
+        type: integer
+        minimum: 0
+      node_attempts:
+        type: integer
+        minimum: 0
+  next_action:
+    type: [object, "null"]
+  human_decision_required:
+    type: array
+    items:
+      type: string
+additionalProperties: false

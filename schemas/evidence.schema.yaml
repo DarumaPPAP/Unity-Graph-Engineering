@@ -1,0 +1,47 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: Unity AI Evidence
+type: object
+required:
+  - evidence_id
+  - run_id
+  - source
+  - result
+  - verdict
+  - captured_at
+properties:
+  evidence_id:
+    type: string
+  run_id:
+    type: string
+  node_id:
+    type: [string, "null"]
+  attempt:
+    type: integer
+    minimum: 0
+  source:
+    enum:
+      - static_validator
+      - compiler
+      - editmode_test
+      - playmode_test
+      - console
+      - screenshot
+      - profiler
+      - gpu_capture
+      - target_device
+      - human_review
+  artifact_version:
+    type: [string, "null"]
+  command:
+    type: [string, "null"]
+  result:
+    type: string
+  verdict:
+    enum: [APPROVE, REJECT, ESCALATE_HUMAN, NOT_RUN]
+  limitations:
+    type: array
+    items:
+      type: string
+  captured_at:
+    type: string
+additionalProperties: false

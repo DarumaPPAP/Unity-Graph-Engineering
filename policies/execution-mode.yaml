@@ -1,0 +1,36 @@
+schema_version: "1.0"
+
+default_mode: prompt
+
+modes:
+  prompt:
+    description: Minimal-context single-owner execution for bounded Unity work.
+    skill: skills/unity-prompt-execution/SKILL.md
+    durable_state: false
+    independent_parallel_workers: false
+
+  graph_loop:
+    description: Typed task graph with bounded node loops, verifier separation, recovery, and durable state.
+    skill: skills/unity-graph-engineering/SKILL.md
+    durable_state: true
+    independent_parallel_workers: true
+
+  auto:
+    description: Evaluate suitability, but never switch from prompt to graph_loop without user confirmation.
+    explicit_selection_only: true
+
+selection:
+  unspecified_request: prompt
+  explicit_prompt: prompt
+  explicit_graph: graph_loop
+  explicit_loop: graph_loop
+  explicit_graph_loop: graph_loop
+  explicit_auto: auto
+
+switching:
+  silent_switch: false
+  prompt_to_graph_loop_requires_confirmation: true
+  graph_loop_to_prompt_requires_reason: true
+  transfer_transcript: false
+  transfer_typed_state: true
+  lock_mode_per_goal: true
