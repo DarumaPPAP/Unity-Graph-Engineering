@@ -1,129 +1,140 @@
-# Unity Graph Engineering
+# Unity AI Execution Engineering
 
-UnityをAIで制作するときの**作業構造・反復・検証・状態管理**を設計するためのリポジトリです。
+Unity制作AIの**実行方式・予算・状態・検証・回復**を管理するRepositoryです。
 
-このプロジェクトの主役はUnity Editor拡張ではありません。ChatGPT、Codex、Claude Code、CursorなどのエージェントがUnityリポジトリへ変更を加える際に、単発Promptではなく次の制御系で仕事を進めます。
-
-```text
-User Goal
-   ↓
-Goal Contract
-   ↓
-Context Acquisition
-   ↓
-Task Graph
-   ↓
-Implementation Loop(s)
-   ↓
-Independent Verification
-   ↓
-Merge Owner
-   ↓
-Human Gate
-   ↓
-State / Knowledge Write-back
-```
-
-## 中心となる3つの考え方
-
-### Graph Engineering
-
-作業をNode、実行依存をEdgeとして定義します。後段が前段の成果を本当に読む場合だけEdgeを作り、独立作業だけを並列化します。
-
-### Loop Engineering
-
-各Nodeの内部を、入力・行動・観測・評価・停止条件を持つ反復として設計します。実装者は自分で完了判定を行わず、最大試行回数と予算を超えたら人間へEscalateします。
-
-### Unity Skills
-
-Unity固有の規約、公式API確認、実装手順、検証方法を再利用可能なSkillへ分離します。Orchestrator Skillは作業フローを所有し、個別の実装知識を重複して抱えません。
-
-## これは何ではないか
-
-- Unity内でノードグラフを表示するための製品ではない
-- Agent数を増やすこと自体を目的にしない
-- すべてを自動化・自動マージする仕組みではない
-- AIの自己申告をVerification Evidenceとして扱わない
-- Repositoryの既存規約より一般論を優先しない
-
-## Repository構成
+すべてのTaskをGraph化しません。普段はPrompt Engineering、複雑案件だけGraph / Loop Engineeringを使用します。
 
 ```text
-AGENTS.md                         AIが必ず守る運用契約
-LOOP.md                           このRepositoryで有効なLoop
-STATE.md                          会話外に残る現在状態
-loop-budget.md                    試行回数・並列数・停止条件
-gate.yaml                         Human Gateと危険Path
-
-skills/unity-graph-engineering/   Cross-agent Orchestrator Skill
-workflows/                        Unity制作タスク別Task Graph
-schemas/                          Goal・State・Evidenceの機械可読Schema
-templates/                        対象Unity Repositoryへ配置する雛形
-starters/codex/                   Codex用Maker/Checker構成
-examples/FakeUnity7/              FakeUnity7を対象とした実行例
-docs/                             設計・運用・Pilot手順
-
-packages/                         旧Artifact Scanner。補助実験でありCoreではない
+User Request
+    ↓
+Execution Router
+    ├─ Prompt Engineering【既定】
+    │    ├─ Minimal Context
+    │    ├─ One Mutation Scope
+    │    └─ Deterministic Verification
+    │
+    └─ Graph / Loop【明示指定または承認後】
+         ├─ Goal Contract
+         ├─ Typed Task Graph
+         ├─ Bounded Node Loops
+         ├─ Independent Verifier
+         ├─ Human Gate
+         └─ State / Evidence Write-back
 ```
 
-`packages/`のUnity Editor拡張は初期の誤解から生まれた補助実験です。Core Workflowからは参照せず、後続PRでArchiveまたは別Repositoryへ分離します。
+Unity固有のC#、URP、RenderGraph、Shader、Variant、Performance、Visual Directionは`DarumaPPAP/UnityAgent`へ委譲します。
 
-## 使い方
+## Execution modes
 
-### 1. 対象Unity RepositoryへProject Contextを置く
+### Prompt Engineering
 
-`templates/PROJECT_CONTEXT.md`と`templates/STATE.md`を対象Repositoryへコピーし、Unity Version、Render Pipeline、Platform、Build/Test手順、禁止事項を記入します。
+モード指定がない場合の既定です。
 
-### 2. SkillをAgentへ導入する
+対象:
 
-Skill互換Agentでは、`skills/unity-graph-engineering/`をSkill Directoryへ追加します。
+- 説明、レビュー
+- 単一ファイルまたは局所修正
+- 原因確定済みエラー
+- 明確な小規模実装
 
-Codexでは`starters/codex/README.md`を参照し、Verifier Agentも配置します。
+Task Graph、複数Worker、永続Checkpointを作らず、必要なContext Packと対象Sourceだけを読みます。
 
-### 3. 普通にUnity制作を依頼する
+### Graph / Loop Engineering
 
-例:
+次の場合だけ使用します。
+
+- 複数Subsystem
+- 原因不明、複数仮説
+- Runtime / Visual / Performance反復
+- Platform固有差
+- Migration / Rollback
+- 独立BranchとJoin
+- Separate Verifier
+
+無指定のPrompt Taskから無断で切り替えません。変更理由、利点、追加コスト、Prompt限定継続案を提示し、ユーザー承認を得ます。
+
+## Core files
 
 ```text
-FakeUnity7にURP向けの高品質なライブステージLightingを実装して。
-既存のProject Contextを読み、Unity Graph Engineeringで進めて。
+AGENTS.md
+policies/
+├─ execution-mode.yaml
+├─ prompt-budget.yaml
+├─ graph-loop-budget.yaml
+└─ mode-escalation.yaml
+
+skills/
+├─ unity-execution-router/
+├─ unity-prompt-execution/
+└─ unity-graph-engineering/
+
+schemas/
+├─ execution-state.schema.yaml
+└─ evidence.schema.yaml
+
+workflow-templates/
+└─ verified-mutation.yaml
 ```
 
-Agentは以下を行います。
+## Context ownership
 
-1. GoalをAcceptance Contractへ変換
-2. Repositoryと公式SourceからContextを確定
-3. Task Graphを作成し、Fake Edgeを削除
-4. 各Nodeを上限付きLoopで実行
-5. 別ContextのVerifierがCompile/Test/Visual/Performanceを判定
-6. Merge前にHuman Gateを提示
-7. STATEとKnowledgeへ結果を書き戻す
+Execution側はUnityAgent全体を一括読込しません。
 
-## Workflow Registry
+```text
+Request
+  ↓
+UnityAgent Context Index
+  ↓
+Domain Context Pack
+  ↓
+Knowledge Graph Query【必要時】
+  ↓
+対象Sourceを直接精読
+```
 
-| Workflow | 用途 |
-|---|---|
-| `unity-feature-implementation.yaml` | Runtime / Editor機能の追加 |
-| `rendering-bug-investigation.yaml` | Editor/実機差、描画破綻、回帰調査 |
-| `shader-development.yaml` | Shader/HLSL/RendererFeature開発 |
-| `scene-generation.yaml` | AIによるScene・Lighting・Project設定生成 |
-| `performance-optimization.yaml` | CPU/GPU/Memory最適化 |
+Knowledge Graphは読む候補を絞る索引です。推論Edgeだけで原因や互換性を確定しません。
 
-## Readiness
+## Budget
 
-現在は**L1 Report / L2 Assistedの境界**です。
+PromptとGraph / Loopで別の上限を持ちます。
 
-- Task Graph、Loop、State、Gate、Evidence Contractを定義済み
-- Small fixはVerifier付きで実施可能
-- 自動マージは禁止
-- 無人実行、定期実行、Knowledge Fusionは未導入
+- file reads
+- context expansion hops
+- hypotheses
+- mutation attempts
+- parallel nodes
+- tool calls
+- input / output / cached tokens
+- external side effects
 
-詳細は`docs/roadmap.md`を参照してください。
+新しいNodeまたはAttempt開始前に残Budgetを確認します。
 
-## 参考Repository
+## State and evidence
 
-- `cobusgreyling/loop-engineering` — Loop、State、Budget、Maker/Checker、Readiness Level
-- `codejunkie99/graph-engineering` — Task Graph、Fake Edge、Diamond Pattern、Stop Rule、Human Gate
-- `Unity-Technologies/skills` — Skill構造、具体的なTrigger、Skill間Delegation、Reference分離
+Transcriptを実行Stateとして引き継ぎません。
 
-利用方針とLicenseについては`THIRD_PARTY_NOTICES.md`を参照してください。
+```text
+STATE/current.yaml
+STATE/events.jsonl
+STATE/checkpoints/
+Evidence/
+```
+
+Stateは現在位置、Evidenceは判断根拠です。AIの自己申告だけではAPPROVEしません。
+
+## Human gates
+
+PR Merge、main直接Push、File削除、Package、ProjectSettings、Render Pipeline、Scene大規模変更、品質と性能のTrade-off、実機品質の最終承認はHuman Gateです。
+
+## Pilot KPI
+
+初期目標:
+
+- Framework Token: 50%以上削減
+- Accepted Taskあたり総Token: 30%以上削減
+- Context File Read: 30%以上削減
+- Verifier品質低下: 0
+- Silent Mode Switch: 0
+- Unbounded Retry: 0
+
+公開事例の最大値をそのまま目標にせず、Unity TaskのA/B比較で採用判断します。
