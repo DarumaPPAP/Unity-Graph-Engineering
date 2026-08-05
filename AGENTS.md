@@ -8,6 +8,9 @@
 - `graph_loop`へ無断で切り替えない。
 - Promptでは安全に完遂できないと判断した場合、理由、利点、追加コスト、限定継続案を提示してユーザー確認を得る。
 - `auto`はユーザーが明示的に指定した場合だけ使用する。
+- Prompt Engineeringは既存Project、既存Repository、既存Package、既存設定を前提に、依頼されたSource変更を直接実装する。
+- ユーザーが明示していない環境構築、Project生成、Package導入、初期設定、雛形生成、Setup Tool作成を前提条件または既定Taskへ追加しない。
+- 実装に本当に必要な依存が欠けている場合だけ、Source実装を可能な範囲まで継続したうえで、不足項目を未解決Bindingまたは未検証Gateとして報告する。
 
 正本:
 
@@ -61,6 +64,10 @@ Projectへアクセスしない標準Profile。Unity Version、Render Pipeline�
 - 必要最小Context
 - 決定的なValidator、Compile、Testを優先
 - 大規模Task Graph、永続Checkpoint、複数Workerを作らない
+- 既存Sourceを直接編集し、コード実装とその最小検証へ集中する
+- 環境構築手順、導入手順、Project初期化、Package追加、ProjectSettings変更、補助Setup Scriptを成果物へ混ぜない
+- ユーザーがセットアップも明示的に依頼した場合だけ、コード実装とは別Scopeとして扱う
+- Project情報不足だけを理由に実装を停止せず、推測不要な部分を先に実装する
 
 Budgetは`policies/prompt-budget.yaml`を正本とする。
 
