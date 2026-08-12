@@ -17,6 +17,8 @@ required:
   - review_status
   - supersedes
   - conflicts_with
+  - execution_profile
+  - scope_class
 properties:
   memory_id:
     type: string
@@ -88,7 +90,7 @@ properties:
   execution_profile:
     enum: [generic_planning, personal_full_control, team_safe_import]
   scope_class:
-    type: string
+    enum: [project_internal, portable_artifact, public_reference]
   sensitivity:
     type: string
   run_id:
@@ -99,7 +101,7 @@ allOf:
         layer:
           const: L0_raw_evidence
     then:
-      required: [source_type, sha256, byte_count, execution_profile, scope_class, sensitivity]
+      required: [source_type, sha256, byte_count, sensitivity]
       properties:
         raw_refs:
           minItems: 1
