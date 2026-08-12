@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Native layered-memory controller for Unity Graph Engineering.
-
-The controller stores source-faithful raw evidence separately from compact
-memory records. It intentionally does not write UnityAgent knowledge or user
-policy; promotion operations only return a gated projection.
-"""
+"""Evidence-preserving layered memory controller for Unity Graph Engineering."""
 
 from __future__ import annotations
 
@@ -17,37 +12,26 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 SCHEMA_VERSION = "1.0"
-DEFAULT_MAX_RAW_BYTES = 2 * 1024 * 1024
+MAX_RAW_BYTES = 2 * 1024 * 1024
 DEFAULT_MAX_ITEMS = 8
 DEFAULT_MAX_CHARS = 6000
-MAX_RETRIEVAL_ITEMS = 20
-MAX_RETRIEVAL_CHARS = 12000
+MAX_ITEMS = 20
+MAX_CHARS = 12000
 
 LAYERS = ("L0_raw_evidence", "L1_atom", "L2_scenario", "L3_reusable_candidate")
-LAYER_DIR = {
-    "L0_raw_evidence": "L0",
-    "L1_atom": "L1",
-    "L2_scenario": "L2",
-    "L3_reusable_candidate": "L3",
-}
-LAYER_WEIGHT = {
-    "L3_reusable_candidate": 4.0,
-    "L2_scenario": 3.0,
-    "L1_atom": 2.0,
-    "L0_raw_evidence": 1.0,
-}
-EXECUTION_PROFILES = {"generic_planning", "personal_full_control", "team_safe_import"}
-SAFE_TEAM_SCOPES = {"portable_artifact", "public_reference"}
+LAYER_DIR = dict(zip(LAYERS, ("L0", "L1", "L2", "L3")))
+LAYER_WEIGHT = dict(zip(LAYERS, (1.0, 2.0, 3.0, 4.0)))
+PROFILES = {"generic_planning", "personal_full_control", "team_safe_import"}
+TEAM_SAFE_SCOPES = {"portable_artifact", "public_reference"}
 CONFIDENCE = {"verified", "probable", "unverified"}
-REVIEW_STATUS = {"not_required", "pending", "approved", "rejected"}
-PROMOTION_TARGETS = {"none", "execution_reference", "unityagent_knowledge", "user_policy_candidate"}
+REVIEW = {"not_required", "pending", "approved", "rejected"}
+PROMOTION = {"none", "execution_reference", "unityagent_knowledge", "user_policy_candidate"}
 
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 TOKEN_RE = re.compile(r"[A-Za-z0-9_./:+-]{2,}")
-
 SECRET_PATTERNS = (
     ("private_key", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----")),
     ("aws_access_key", re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b")),
@@ -62,50 +46,35 @@ SECRET_PATTERNS = (
 
 
 class MemoryErrorContract(Exception):
-    """Typed controller error with a stable machine-readable code."""
-
-    def __init__(self, code: str, message: str, *, status: str = "invalid_request") -> None:
+    def __init__(self, code: str, message: str, status: str = "invalid_request") -> None:
         super().__init__(message)
         self.code = code
         self.message = message
         self.status = status
 
 
-def _utc_now() -> str:
+def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 def _safe_id(value: Any, field: str = "id") -> str:
     text = str(value or "").strip()
     if not ID_RE.fullmatch(text):
-        raise MemoryErrorContract(
-            "invalid_id",
-            f"{field} must match {ID_RE.pattern}",
-        )
+        raise MemoryErrorContract("invalid_id", f"{field} must match {ID_RE.pattern}")
     return text
 
 
-def _string_list(value: Any, field: str, *, allow_empty: bool = True) -> list[str]:
+def _list(value: Any, field: str, required: bool = False) -> list[str]:
     if value is None:
-        return []
+        value = []
     if not isinstance(value, list):
         raise MemoryErrorContract("invalid_request", f"{field} must be an array")
-    result: list[str] = []
-    for item in value:
-        text = str(item).strip()
-        if not text:
-            raise MemoryErrorContract("invalid_request", f"{field} contains an empty value")
-        result.append(text)
-    if not allow_empty and not result:
+    result = [str(item).strip() for item in value]
+    if any(not item for item in result):
+        raise MemoryErrorContract("invalid_request", f"{field} contains an empty value")
+    if required and not result:
         raise MemoryErrorContract("invalid_request", f"{field} must not be empty")
     return result
-
-
-def _workspace_root(value: str | Path) -> Path:
-    path = Path(value).expanduser().resolve()
-    if not path.is_dir():
-        raise MemoryErrorContract("workspace_not_found", f"workspace root does not exist: {path}")
-    return path
 
 
 def _memory_root(workspace: Path) -> Path:
@@ -120,43 +89,32 @@ def _raw_path(workspace: Path, evidence_id: str) -> Path:
     return workspace / "Evidence" / "raw" / f"{evidence_id}.txt"
 
 
-def _event_path(workspace: Path) -> Path:
-    return _memory_root(workspace) / "events.jsonl"
-
-
-def _atomic_write_text(path: Path, text: str) -> None:
+def _atomic_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent))
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent))
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as stream:
             stream.write(text)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(tmp_name, path)
+        os.replace(temp_name, path)
     finally:
-        if os.path.exists(tmp_name):
-            os.unlink(tmp_name)
+        if os.path.exists(temp_name):
+            os.unlink(temp_name)
 
 
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    _atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+def _write_json(path: Path, value: dict[str, Any]) -> None:
+    _atomic_text(path, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
 
 
-def _append_event(workspace: Path, event: dict[str, Any]) -> None:
-    path = _event_path(workspace)
+def _append_event(workspace: Path, value: dict[str, Any]) -> None:
+    path = _memory_root(workspace) / "events.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8", newline="") as stream:
-        stream.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n")
+        stream.write(json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n")
 
 
-def _envelope(
-    operation: str,
-    status: str,
-    *,
-    data: Any = None,
-    diagnostics: list[dict[str, Any]] | None = None,
-    mutated: bool = False,
-) -> dict[str, Any]:
+def _envelope(operation: str, status: str, data: Any = None, diagnostics=None, mutated=False) -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
         "controller": "layered_memory",
@@ -174,9 +132,9 @@ def _read_json(path: Path) -> dict[str, Any]:
     except FileNotFoundError as exc:
         raise MemoryErrorContract("memory_not_found", f"memory record not found: {path.stem}") from exc
     except json.JSONDecodeError as exc:
-        raise MemoryErrorContract("memory_corrupt", f"invalid JSON in {path}: {exc}", status="blocked") from exc
+        raise MemoryErrorContract("memory_corrupt", f"invalid JSON in {path}: {exc}", "blocked") from exc
     if not isinstance(value, dict):
-        raise MemoryErrorContract("memory_corrupt", f"record must be a JSON object: {path}", status="blocked")
+        raise MemoryErrorContract("memory_corrupt", f"record must be an object: {path}", "blocked")
     return value
 
 
@@ -189,123 +147,102 @@ def _load_record(workspace: Path, memory_id: str) -> dict[str, Any]:
     raise MemoryErrorContract("memory_not_found", f"memory record not found: {memory_id}")
 
 
-def _secret_findings(text: str) -> list[str]:
-    findings = []
-    for code, pattern in SECRET_PATTERNS:
-        if pattern.search(text):
-            findings.append(code)
-    return findings
-
-
-def _request_profile(request: dict[str, Any]) -> str:
+def _profile(request: dict[str, Any]) -> str:
     profile = str(request.get("execution_profile", "generic_planning"))
-    if profile not in EXECUTION_PROFILES:
+    if profile not in PROFILES:
         raise MemoryErrorContract("invalid_profile", f"unsupported execution_profile: {profile}")
     return profile
 
 
-def _assert_capture_scope(request: dict[str, Any], text: str) -> tuple[str, str]:
-    profile = _request_profile(request)
-    scope_class = str(request.get("scope_class", "portable_artifact")).strip()
-    sensitivity = str(request.get("sensitivity", "internal")).strip().lower()
-    if sensitivity == "secret":
+def _guard_capture_scope(request: dict[str, Any]) -> tuple[str, str]:
+    profile = _profile(request)
+    scope = str(request.get("scope_class", "portable_artifact")).strip()
+    if profile == "team_safe_import" and scope not in TEAM_SAFE_SCOPES:
         raise MemoryErrorContract(
-            "secret_capture_forbidden",
-            "secret-classified raw evidence must not be stored",
-            status="blocked",
+            "team_safe_scope_forbidden",
+            f"team_safe_import may capture only {sorted(TEAM_SAFE_SCOPES)}",
+            "blocked",
         )
-    findings = _secret_findings(text)
+    return profile, scope
+
+
+def _guard_secret(text: str, sensitivity: str) -> None:
+    if sensitivity.lower() == "secret":
+        raise MemoryErrorContract("secret_capture_forbidden", "secret-classified raw evidence must not be stored", "blocked")
+    findings = [code for code, pattern in SECRET_PATTERNS if pattern.search(text)]
     if findings:
         raise MemoryErrorContract(
             "secret_capture_forbidden",
             f"raw evidence matched secret patterns: {', '.join(findings)}",
-            status="blocked",
+            "blocked",
         )
-    if profile == "team_safe_import" and scope_class not in SAFE_TEAM_SCOPES:
-        raise MemoryErrorContract(
-            "team_safe_scope_forbidden",
-            f"team_safe_import may capture only {sorted(SAFE_TEAM_SCOPES)}",
-            status="blocked",
-        )
-    return profile, scope_class
 
 
-def _ensure_new_or_identical(path: Path, payload: dict[str, Any]) -> bool:
-    if not path.exists():
-        return True
-    existing = _read_json(path)
-    if existing == payload:
-        return False
-    raise MemoryErrorContract(
-        "id_conflict",
-        f"{path.stem} already exists with different content; use supersedes/conflicts_with instead of overwrite",
-        status="blocked",
-    )
-
-
-def _validate_refs(workspace: Path, refs: Iterable[str], required_layer: str, field: str) -> list[str]:
+def _validate_refs(workspace: Path, refs: list[str], expected_layer: str, field: str) -> list[str]:
     normalized = [_safe_id(ref, field) for ref in refs]
     for ref in normalized:
-        record = _load_record(workspace, ref)
-        if record.get("layer") != required_layer:
+        actual = _load_record(workspace, ref).get("layer")
+        if actual != expected_layer:
             raise MemoryErrorContract(
                 "invalid_reference_layer",
-                f"{field} {ref} must reference {required_layer}, got {record.get('layer')}",
+                f"{field} {ref} must reference {expected_layer}, got {actual}",
             )
     return normalized
 
 
-def _validate_relation_refs(workspace: Path, refs: Iterable[str], field: str) -> list[str]:
-    normalized = [_safe_id(ref, field) for ref in refs]
-    for ref in normalized:
+def _relation_refs(workspace: Path, request: dict[str, Any], field: str) -> list[str]:
+    refs = [_safe_id(ref, field) for ref in _list(request.get(field), field)]
+    for ref in refs:
         _load_record(workspace, ref)
-    return normalized
+    return refs
 
 
 def capture_raw(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
     evidence_id = _safe_id(request.get("evidence_id"), "evidence_id")
-    source_file = Path(str(request.get("source_file", ""))).expanduser().resolve()
-    if not source_file.is_file():
-        raise MemoryErrorContract("source_file_not_found", f"source_file does not exist: {source_file}")
-    max_bytes = int(request.get("max_raw_bytes", DEFAULT_MAX_RAW_BYTES))
-    if max_bytes <= 0 or max_bytes > DEFAULT_MAX_RAW_BYTES:
-        raise MemoryErrorContract(
-            "invalid_max_raw_bytes",
-            f"max_raw_bytes must be 1..{DEFAULT_MAX_RAW_BYTES}",
-        )
-    raw = source_file.read_bytes()
+    profile, scope = _guard_capture_scope(request)
+
+    source = Path(str(request.get("source_file", ""))).expanduser().resolve()
+    if not source.is_file():
+        raise MemoryErrorContract("source_file_not_found", f"source_file does not exist: {source}")
+
+    max_bytes = int(request.get("max_raw_bytes", MAX_RAW_BYTES))
+    if not 1 <= max_bytes <= MAX_RAW_BYTES:
+        raise MemoryErrorContract("invalid_max_raw_bytes", f"max_raw_bytes must be 1..{MAX_RAW_BYTES}")
+
+    raw = source.read_bytes()
     if len(raw) > max_bytes:
-        raise MemoryErrorContract(
-            "raw_evidence_too_large",
-            f"raw evidence is {len(raw)} bytes; maximum is {max_bytes}",
-            status="blocked",
-        )
+        raise MemoryErrorContract("raw_evidence_too_large", f"raw evidence exceeds {max_bytes} bytes", "blocked")
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise MemoryErrorContract(
-            "raw_evidence_not_utf8",
-            "raw evidence must be UTF-8 text for this native controller",
-            status="blocked",
-        ) from exc
+        raise MemoryErrorContract("raw_evidence_not_utf8", "raw evidence must be UTF-8 text", "blocked") from exc
+    _guard_secret(text, str(request.get("sensitivity", "internal")))
 
-    profile, scope_class = _assert_capture_scope(request, text)
     digest = hashlib.sha256(raw).hexdigest()
     raw_path = _raw_path(workspace, evidence_id)
-    metadata_path = _record_path(workspace, "L0_raw_evidence", evidence_id)
+    meta_path = _record_path(workspace, "L0_raw_evidence", evidence_id)
+
+    if raw_path.exists():
+        if hashlib.sha256(raw_path.read_bytes()).hexdigest() != digest:
+            raise MemoryErrorContract("id_conflict", f"raw evidence {evidence_id} already has different content", "blocked")
+        if meta_path.exists():
+            existing = _read_json(meta_path)
+            if existing.get("sha256") != digest:
+                raise MemoryErrorContract("id_conflict", f"metadata for {evidence_id} has a different digest", "blocked")
+            return _envelope("capture_raw", "ok", existing, mutated=False)
 
     metadata = {
         "memory_id": evidence_id,
         "layer": "L0_raw_evidence",
-        "created_at": str(request.get("created_at") or _utc_now()),
+        "created_at": str(request.get("created_at") or _now()),
         "statement": str(request.get("statement") or f"Raw evidence: {request.get('source_type', 'tool_output')}"),
         "raw_refs": [f"Evidence/raw/{evidence_id}.txt"],
         "atom_refs": [],
         "scenario_refs": [],
-        "applicability": _string_list(request.get("applicability"), "applicability"),
-        "limits": _string_list(request.get("limits"), "limits"),
+        "applicability": _list(request.get("applicability"), "applicability"),
+        "limits": _list(request.get("limits"), "limits"),
         "confidence": "verified",
-        "provenance": _string_list(request.get("provenance"), "provenance"),
+        "provenance": _list(request.get("provenance"), "provenance"),
         "promotion_target": "none",
         "review_status": "not_required",
         "supersedes": [],
@@ -314,189 +251,159 @@ def capture_raw(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
         "sha256": digest,
         "byte_count": len(raw),
         "execution_profile": profile,
-        "scope_class": scope_class,
+        "scope_class": scope,
         "sensitivity": str(request.get("sensitivity", "internal")),
         "repository": request.get("repository"),
         "run_id": request.get("run_id"),
     }
 
-    if raw_path.exists():
-        existing_raw = raw_path.read_bytes()
-        if hashlib.sha256(existing_raw).hexdigest() != digest:
-            raise MemoryErrorContract(
-                "id_conflict",
-                f"raw evidence {evidence_id} already exists with different content",
-                status="blocked",
-            )
-    should_write_meta = _ensure_new_or_identical(metadata_path, metadata)
+    if meta_path.exists():
+        existing = _read_json(meta_path)
+        if existing.get("sha256") != digest:
+            raise MemoryErrorContract("id_conflict", f"metadata for {evidence_id} already has different content", "blocked")
+        metadata = existing
+
     mutated = False
     if not raw_path.exists():
-        _atomic_write_text(raw_path, text)
+        _atomic_text(raw_path, text)
         mutated = True
-    if should_write_meta:
-        _write_json(metadata_path, metadata)
+    if not meta_path.exists():
+        _write_json(meta_path, metadata)
         mutated = True
     if mutated:
-        _append_event(
-            workspace,
-            {
-                "event": "memory_created",
-                "memory_id": evidence_id,
-                "layer": "L0_raw_evidence",
-                "captured_at": _utc_now(),
-                "sha256": digest,
-            },
-        )
-    return _envelope("capture_raw", "ok", data=metadata, mutated=mutated)
+        _append_event(workspace, {
+            "event": "memory_created",
+            "memory_id": evidence_id,
+            "layer": "L0_raw_evidence",
+            "captured_at": _now(),
+            "sha256": digest,
+        })
+    return _envelope("capture_raw", "ok", metadata, mutated=mutated)
 
 
-def _base_record(
+def _new_record(
     workspace: Path,
     request: dict[str, Any],
-    *,
     layer: str,
-    required_ref_field: str,
-    required_ref_layer: str,
+    ref_field: str,
+    ref_layer: str,
 ) -> dict[str, Any]:
     memory_id = _safe_id(request.get("memory_id"), "memory_id")
     statement = str(request.get("statement", "")).strip()
     if not statement:
         raise MemoryErrorContract("missing_statement", "statement must not be empty")
+
     confidence = str(request.get("confidence", "unverified"))
     if confidence not in CONFIDENCE:
         raise MemoryErrorContract("invalid_confidence", f"unsupported confidence: {confidence}")
-    review_status = str(request.get("review_status", "pending" if layer == "L3_reusable_candidate" else "not_required"))
-    if review_status not in REVIEW_STATUS:
-        raise MemoryErrorContract("invalid_review_status", f"unsupported review_status: {review_status}")
-    promotion_target = str(request.get("promotion_target", "none"))
-    if promotion_target not in PROMOTION_TARGETS:
-        raise MemoryErrorContract("invalid_promotion_target", f"unsupported promotion_target: {promotion_target}")
+    review = str(request.get("review_status", "pending" if layer == "L3_reusable_candidate" else "not_required"))
+    if review not in REVIEW:
+        raise MemoryErrorContract("invalid_review_status", f"unsupported review_status: {review}")
+    promotion = str(request.get("promotion_target", "none"))
+    if promotion not in PROMOTION:
+        raise MemoryErrorContract("invalid_promotion_target", f"unsupported promotion_target: {promotion}")
 
-    refs = _string_list(request.get(required_ref_field), required_ref_field, allow_empty=False)
-    refs = _validate_refs(workspace, refs, required_ref_layer, required_ref_field)
-    supersedes = _validate_relation_refs(
-        workspace,
-        _string_list(request.get("supersedes"), "supersedes"),
-        "supersedes",
-    )
-    conflicts = _validate_relation_refs(
-        workspace,
-        _string_list(request.get("conflicts_with"), "conflicts_with"),
-        "conflicts_with",
-    )
+    refs = _validate_refs(workspace, _list(request.get(ref_field), ref_field, required=True), ref_layer, ref_field)
+    supersedes = _relation_refs(workspace, request, "supersedes")
+    conflicts = _relation_refs(workspace, request, "conflicts_with")
     if memory_id in supersedes or memory_id in conflicts:
-        raise MemoryErrorContract("self_reference", "memory record cannot supersede or conflict with itself")
+        raise MemoryErrorContract("self_reference", "memory record cannot reference itself")
 
-    record = {
+    return {
         "memory_id": memory_id,
         "layer": layer,
-        "created_at": str(request.get("created_at") or _utc_now()),
+        "created_at": str(request.get("created_at") or _now()),
         "statement": statement,
-        "raw_refs": refs if required_ref_field == "raw_refs" else [],
-        "atom_refs": refs if required_ref_field == "atom_refs" else [],
-        "scenario_refs": refs if required_ref_field == "scenario_refs" else [],
-        "applicability": _string_list(request.get("applicability"), "applicability"),
-        "limits": _string_list(request.get("limits"), "limits"),
+        "raw_refs": refs if ref_field == "raw_refs" else [],
+        "atom_refs": refs if ref_field == "atom_refs" else [],
+        "scenario_refs": refs if ref_field == "scenario_refs" else [],
+        "applicability": _list(request.get("applicability"), "applicability"),
+        "limits": _list(request.get("limits"), "limits"),
         "confidence": confidence,
-        "provenance": _string_list(request.get("provenance"), "provenance"),
-        "promotion_target": promotion_target,
-        "review_status": review_status,
+        "provenance": _list(request.get("provenance"), "provenance"),
+        "promotion_target": promotion,
+        "review_status": review,
         "supersedes": supersedes,
         "conflicts_with": conflicts,
         "repository": request.get("repository"),
         "unity_version": request.get("unity_version"),
         "platform": request.get("platform"),
-        "tags": _string_list(request.get("tags"), "tags"),
+        "tags": _list(request.get("tags"), "tags"),
     }
-    return record
 
 
-def _write_record(workspace: Path, record: dict[str, Any], operation: str) -> dict[str, Any]:
-    path = _record_path(workspace, str(record["layer"]), str(record["memory_id"]))
-    should_write = _ensure_new_or_identical(path, record)
-    if should_write:
-        _write_json(path, record)
-        _append_event(
-            workspace,
-            {
-                "event": "memory_created",
-                "memory_id": record["memory_id"],
-                "layer": record["layer"],
-                "captured_at": _utc_now(),
-                "supersedes": record.get("supersedes", []),
-                "conflicts_with": record.get("conflicts_with", []),
-            },
+def _store_record(workspace: Path, record: dict[str, Any], operation: str) -> dict[str, Any]:
+    path = _record_path(workspace, record["layer"], record["memory_id"])
+    if path.exists():
+        existing = _read_json(path)
+        if existing == record:
+            return _envelope(operation, "ok", existing, mutated=False)
+        raise MemoryErrorContract(
+            "id_conflict",
+            f"{record['memory_id']} already exists; use supersedes/conflicts_with instead of overwrite",
+            "blocked",
         )
-    return _envelope(operation, "ok", data=record, mutated=should_write)
+
+    _write_json(path, record)
+    _append_event(workspace, {
+        "event": "memory_created",
+        "memory_id": record["memory_id"],
+        "layer": record["layer"],
+        "captured_at": _now(),
+        "supersedes": record["supersedes"],
+        "conflicts_with": record["conflicts_with"],
+    })
+    return _envelope(operation, "ok", record, mutated=True)
 
 
 def create_atom(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
-    record = _base_record(
+    return _store_record(
         workspace,
-        request,
-        layer="L1_atom",
-        required_ref_field="raw_refs",
-        required_ref_layer="L0_raw_evidence",
+        _new_record(workspace, request, "L1_atom", "raw_refs", "L0_raw_evidence"),
+        "create_atom",
     )
-    return _write_record(workspace, record, "create_atom")
 
 
 def create_scenario(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
-    record = _base_record(
-        workspace,
-        request,
-        layer="L2_scenario",
-        required_ref_field="atom_refs",
-        required_ref_layer="L1_atom",
-    )
+    record = _new_record(workspace, request, "L2_scenario", "atom_refs", "L1_atom")
     if not record["applicability"]:
         raise MemoryErrorContract("missing_applicability", "L2 scenario requires applicability")
     if not record["limits"]:
         raise MemoryErrorContract("missing_limits", "L2 scenario requires limits")
-    return _write_record(workspace, record, "create_scenario")
+    return _store_record(workspace, record, "create_scenario")
 
 
 def create_candidate(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
-    record = _base_record(
-        workspace,
-        request,
-        layer="L3_reusable_candidate",
-        required_ref_field="scenario_refs",
-        required_ref_layer="L2_scenario",
-    )
+    record = _new_record(workspace, request, "L3_reusable_candidate", "scenario_refs", "L2_scenario")
     if not record["provenance"]:
         raise MemoryErrorContract("missing_provenance", "L3 reusable candidate requires provenance")
     if record["promotion_target"] == "none":
         raise MemoryErrorContract("missing_promotion_target", "L3 reusable candidate requires a promotion_target")
-    return _write_record(workspace, record, "create_candidate")
+    return _store_record(workspace, record, "create_candidate")
 
 
-def _all_records(workspace: Path) -> list[dict[str, Any]]:
-    records: list[dict[str, Any]] = []
+def _records(workspace: Path) -> list[dict[str, Any]]:
+    result = []
     for layer in LAYERS:
         folder = _memory_root(workspace) / LAYER_DIR[layer]
-        if not folder.is_dir():
-            continue
-        for path in sorted(folder.glob("*.json")):
-            records.append(_read_json(path))
-    return records
+        if folder.is_dir():
+            result.extend(_read_json(path) for path in sorted(folder.glob("*.json")))
+    return result
 
 
 def _tokens(value: Any) -> set[str]:
-    text = " ".join(str(x) for x in value) if isinstance(value, list) else str(value or "")
+    text = " ".join(map(str, value)) if isinstance(value, list) else str(value or "")
     return {token.lower() for token in TOKEN_RE.findall(text)}
 
 
-def _score_record(record: dict[str, Any], query_tokens: set[str], context: dict[str, Any]) -> float:
-    haystack = set()
+def _score(record: dict[str, Any], query: set[str], context: dict[str, Any]) -> float:
+    searchable = set()
     for field in ("statement", "applicability", "limits", "provenance", "tags", "repository", "unity_version", "platform"):
-        haystack |= _tokens(record.get(field))
-    lexical = len(query_tokens & haystack)
-    score = float(lexical) * 10.0 + LAYER_WEIGHT.get(str(record.get("layer")), 0.0)
-
+        searchable |= _tokens(record.get(field))
+    score = len(query & searchable) * 10.0 + LAYER_WEIGHT.get(record.get("layer"), 0.0)
     for field, bonus in (("repository", 4.0), ("unity_version", 2.0), ("platform", 2.0)):
-        wanted = str(context.get(field) or "").strip().lower()
-        actual = str(record.get(field) or "").strip().lower()
+        wanted = str(context.get(field) or "").lower()
+        actual = str(record.get(field) or "").lower()
         if wanted and actual and wanted == actual:
             score += bonus
     if record.get("confidence") == "verified":
@@ -504,120 +411,90 @@ def _score_record(record: dict[str, Any], query_tokens: set[str], context: dict[
     return score
 
 
-def _compact_record(record: dict[str, Any]) -> dict[str, Any]:
+def _compact(record: dict[str, Any]) -> dict[str, Any]:
     return {
-        "memory_id": record.get("memory_id"),
-        "layer": record.get("layer"),
-        "statement": record.get("statement"),
-        "confidence": record.get("confidence"),
-        "applicability": record.get("applicability", []),
-        "limits": record.get("limits", []),
-        "provenance": record.get("provenance", []),
-        "supersedes": record.get("supersedes", []),
-        "conflicts_with": record.get("conflicts_with", []),
-        "repository": record.get("repository"),
-        "unity_version": record.get("unity_version"),
-        "platform": record.get("platform"),
+        key: record.get(key, [] if key in {"applicability", "limits", "provenance", "supersedes", "conflicts_with"} else None)
+        for key in (
+            "memory_id", "layer", "statement", "confidence", "applicability", "limits",
+            "provenance", "supersedes", "conflicts_with", "repository", "unity_version", "platform",
+        )
     }
 
 
 def retrieve(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
-    query = str(request.get("query", "")).strip()
-    query_tokens = _tokens(query)
+    query_text = str(request.get("query", "")).strip()
+    query = _tokens(query_text)
     max_items = int(request.get("max_items", DEFAULT_MAX_ITEMS))
     max_chars = int(request.get("max_chars", DEFAULT_MAX_CHARS))
-    if not 1 <= max_items <= MAX_RETRIEVAL_ITEMS:
-        raise MemoryErrorContract("invalid_max_items", f"max_items must be 1..{MAX_RETRIEVAL_ITEMS}")
-    if not 256 <= max_chars <= MAX_RETRIEVAL_CHARS:
-        raise MemoryErrorContract("invalid_max_chars", f"max_chars must be 256..{MAX_RETRIEVAL_CHARS}")
+    if not 1 <= max_items <= MAX_ITEMS:
+        raise MemoryErrorContract("invalid_max_items", f"max_items must be 1..{MAX_ITEMS}")
+    if not 256 <= max_chars <= MAX_CHARS:
+        raise MemoryErrorContract("invalid_max_chars", f"max_chars must be 256..{MAX_CHARS}")
 
     requested_layers = request.get("layers")
-    if requested_layers is None:
-        allowed_layers = set(LAYERS)
-    else:
-        allowed_layers = set(_string_list(requested_layers, "layers"))
-        unknown = allowed_layers - set(LAYERS)
-        if unknown:
-            raise MemoryErrorContract("invalid_layer", f"unsupported layers: {sorted(unknown)}")
+    allowed = set(LAYERS) if requested_layers is None else set(_list(requested_layers, "layers"))
+    unknown = allowed - set(LAYERS)
+    if unknown:
+        raise MemoryErrorContract("invalid_layer", f"unsupported layers: {sorted(unknown)}")
 
-    context = {
-        "repository": request.get("repository"),
-        "unity_version": request.get("unity_version"),
-        "platform": request.get("platform"),
-    }
-    scored = []
-    for record in _all_records(workspace):
-        if record.get("layer") not in allowed_layers:
+    context = {field: request.get(field) for field in ("repository", "unity_version", "platform")}
+    ranked = []
+    for record in _records(workspace):
+        if record.get("layer") not in allowed:
             continue
-        score = _score_record(record, query_tokens, context)
-        if query_tokens and score <= LAYER_WEIGHT.get(str(record.get("layer")), 0.0) + 1.0:
+        score = _score(record, query, context)
+        base = LAYER_WEIGHT.get(record.get("layer"), 0.0) + (1.0 if record.get("confidence") == "verified" else 0.0)
+        if query and score <= base:
             continue
-        scored.append((score, record))
+        ranked.append((score, record))
+    ranked.sort(key=lambda item: (item[0], LAYER_WEIGHT.get(item[1].get("layer"), 0.0), item[1].get("created_at", "")), reverse=True)
 
-    scored.sort(
-        key=lambda item: (
-            item[0],
-            LAYER_WEIGHT.get(str(item[1].get("layer")), 0.0),
-            str(item[1].get("created_at", "")),
-        ),
-        reverse=True,
-    )
-
-    selected: list[dict[str, Any]] = []
-    used_chars = 0
-    truncated = False
-    for score, record in scored:
-        if len(selected) >= max_items:
+    items, used, truncated = [], 0, False
+    for score, record in ranked:
+        if len(items) >= max_items:
             truncated = True
             break
-        compact = _compact_record(record)
-        compact["score"] = round(score, 3)
-        encoded = json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
-        if selected and used_chars + len(encoded) > max_chars:
+        item = _compact(record)
+        item["score"] = round(score, 3)
+        size = len(json.dumps(item, ensure_ascii=False, separators=(",", ":")))
+        if items and used + size > max_chars:
             truncated = True
             break
-        if not selected and len(encoded) > max_chars:
-            compact["statement"] = str(compact.get("statement") or "")[: max(64, max_chars // 2)]
-            encoded = json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
+        if not items and size > max_chars:
+            item["statement"] = str(item.get("statement") or "")[: max(64, max_chars // 2)]
+            size = len(json.dumps(item, ensure_ascii=False, separators=(",", ":")))
             truncated = True
-        selected.append(compact)
-        used_chars += len(encoded)
+        items.append(item)
+        used += size
 
-    return _envelope(
-        "retrieve",
-        "ok",
-        data={
-            "query": query,
-            "items": selected,
-            "item_count": len(selected),
-            "characters": used_chars,
-            "truncated": truncated,
-            "raw_content_included": False,
-            "retrieval_policy": "layer_weighted_lexical_then_context_affinity",
-        },
-    )
+    return _envelope("retrieve", "ok", {
+        "query": query_text,
+        "items": items,
+        "item_count": len(items),
+        "characters": used,
+        "truncated": truncated,
+        "raw_content_included": False,
+        "retrieval_policy": "layer_weighted_lexical_then_context_affinity",
+    })
 
 
-def _child_refs(record: dict[str, Any]) -> list[str]:
-    layer = record.get("layer")
-    if layer == "L3_reusable_candidate":
-        return list(record.get("scenario_refs", []))
-    if layer == "L2_scenario":
-        return list(record.get("atom_refs", []))
-    if layer == "L1_atom":
-        return list(record.get("raw_refs", []))
-    return []
+def _children(record: dict[str, Any]) -> list[str]:
+    field = {
+        "L3_reusable_candidate": "scenario_refs",
+        "L2_scenario": "atom_refs",
+        "L1_atom": "raw_refs",
+    }.get(record.get("layer"))
+    return list(record.get(field, [])) if field else []
 
 
 def drilldown(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
     root_id = _safe_id(request.get("memory_id"), "memory_id")
-    include_raw_content = bool(request.get("include_raw_content", False))
+    include_raw = bool(request.get("include_raw_content", False))
     max_chars = int(request.get("max_chars", DEFAULT_MAX_CHARS))
-    if not 256 <= max_chars <= MAX_RETRIEVAL_CHARS:
-        raise MemoryErrorContract("invalid_max_chars", f"max_chars must be 256..{MAX_RETRIEVAL_CHARS}")
+    if not 256 <= max_chars <= MAX_CHARS:
+        raise MemoryErrorContract("invalid_max_chars", f"max_chars must be 256..{MAX_CHARS}")
 
-    visited: set[str] = set()
-    ordered: list[dict[str, Any]] = []
+    visited, ordered = set(), []
 
     def walk(memory_id: str) -> None:
         if memory_id in visited:
@@ -625,81 +502,65 @@ def drilldown(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
         visited.add(memory_id)
         record = _load_record(workspace, memory_id)
         ordered.append(record)
-        for child in _child_refs(record):
+        for child in _children(record):
             walk(child)
 
     walk(root_id)
 
-    output: list[dict[str, Any]] = []
-    used_chars = 0
-    truncated = False
+    output, used, truncated = [], 0, False
     for record in ordered:
-        compact = _compact_record(record)
-        compact["raw_refs"] = record.get("raw_refs", [])
-        compact["atom_refs"] = record.get("atom_refs", [])
-        compact["scenario_refs"] = record.get("scenario_refs", [])
-        if include_raw_content and record.get("layer") == "L0_raw_evidence":
-            raw_refs = record.get("raw_refs", [])
-            if raw_refs:
-                raw_rel = str(raw_refs[0])
-                expected_prefix = "Evidence/raw/"
-                if raw_rel.startswith(expected_prefix):
-                    raw_path = (workspace / raw_rel).resolve()
-                    if workspace not in raw_path.parents:
-                        raise MemoryErrorContract("invalid_raw_path", "raw evidence path escapes workspace", status="blocked")
-                    compact["raw_content"] = raw_path.read_text(encoding="utf-8") if raw_path.is_file() else None
+        item = _compact(record)
+        for field in ("raw_refs", "atom_refs", "scenario_refs"):
+            item[field] = record.get(field, [])
+        if include_raw and record.get("layer") == "L0_raw_evidence" and record.get("raw_refs"):
+            relative = str(record["raw_refs"][0])
+            if not relative.startswith("Evidence/raw/"):
+                raise MemoryErrorContract("invalid_raw_path", "raw evidence path is outside Evidence/raw", "blocked")
+            raw_path = (workspace / relative).resolve()
+            if workspace != raw_path and workspace not in raw_path.parents:
+                raise MemoryErrorContract("invalid_raw_path", "raw evidence path escapes workspace", "blocked")
+            item["raw_content"] = raw_path.read_text(encoding="utf-8") if raw_path.is_file() else None
 
-        encoded = json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
-        remaining = max_chars - used_chars
+        encoded = json.dumps(item, ensure_ascii=False, separators=(",", ":"))
+        remaining = max_chars - used
         if remaining <= 0:
             truncated = True
             break
         if len(encoded) > remaining:
-            if "raw_content" in compact and compact["raw_content"]:
-                overhead = len(encoded) - len(str(compact["raw_content"]))
-                budget = max(0, remaining - overhead - 32)
-                compact["raw_content"] = str(compact["raw_content"])[:budget]
-                compact["raw_content_truncated"] = True
-                encoded = json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
+            if item.get("raw_content"):
+                overhead = len(encoded) - len(item["raw_content"])
+                item["raw_content"] = item["raw_content"][: max(0, remaining - overhead - 32)]
+                item["raw_content_truncated"] = True
+                encoded = json.dumps(item, ensure_ascii=False, separators=(",", ":"))
                 truncated = True
             else:
                 truncated = True
                 break
-        output.append(compact)
-        used_chars += len(encoded)
+        output.append(item)
+        used += len(encoded)
 
-    return _envelope(
-        "drilldown",
-        "ok",
-        data={
-            "root_memory_id": root_id,
-            "records": output,
-            "characters": used_chars,
-            "truncated": truncated,
-            "raw_content_included": include_raw_content,
-        },
-    )
+    return _envelope("drilldown", "ok", {
+        "root_memory_id": root_id,
+        "records": output,
+        "characters": used,
+        "truncated": truncated,
+        "raw_content_included": include_raw,
+    })
 
 
 def project(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
-    projected_request = dict(request)
-    projected_request["operation"] = "retrieve"
-    projected_request.setdefault("max_items", DEFAULT_MAX_ITEMS)
-    projected_request.setdefault("max_chars", DEFAULT_MAX_CHARS)
-    result = retrieve(workspace, projected_request)
+    result = retrieve(workspace, request)
     items = result["data"]["items"]
-    highest_layer = items[0]["layer"] if items else None
-    raw_evidence_refs: list[str] = []
-    for item in items:
-        record = _load_record(workspace, str(item["memory_id"]))
-        if record.get("layer") == "L0_raw_evidence":
-            raw_evidence_refs.extend(record.get("raw_refs", []))
     result["operation"] = "project"
     result["data"] = {
         "projection_id": str(request.get("projection_id") or f"projection-{hashlib.sha256(str(request.get('query','')).encode()).hexdigest()[:12]}"),
-        "highest_layer": highest_layer,
+        "highest_layer": items[0]["layer"] if items else None,
         "items": items,
-        "raw_evidence_refs": sorted(set(raw_evidence_refs)),
+        "raw_evidence_refs": sorted({
+            ref
+            for item in items
+            for ref in (_load_record(workspace, item["memory_id"]).get("raw_refs", []) if item["layer"] == "L0_raw_evidence" else [])
+        }),
         "raw_content_included": False,
         "source_of_truth": "STATE/current.yaml + Evidence/raw + STATE/memory",
         "characters": result["data"]["characters"],
@@ -713,41 +574,34 @@ def promote(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
     record = _load_record(workspace, memory_id)
     if record.get("layer") != "L3_reusable_candidate":
         raise MemoryErrorContract("promotion_requires_l3", "only L3 reusable candidates may be promoted")
+
     target = str(request.get("target") or record.get("promotion_target") or "none")
     if target not in {"execution_reference", "unityagent_knowledge", "user_policy_candidate"}:
         raise MemoryErrorContract("invalid_promotion_target", f"unsupported promotion target: {target}")
 
-    reasons: list[str] = []
+    reasons = []
     if record.get("review_status") != "approved":
         reasons.append("candidate review_status must be approved")
     if not record.get("provenance"):
         reasons.append("candidate provenance is required")
-    if target == "unityagent_knowledge" and record.get("confidence") != "verified":
-        reasons.append("unityagent_knowledge requires verified confidence")
-    if target == "user_policy_candidate":
-        if record.get("confidence") != "verified":
-            reasons.append("user_policy_candidate requires verified confidence")
-        if request.get("human_gate_approved") is not True:
-            reasons.append("user_policy_candidate requires explicit Human Gate approval")
+    if target in {"unityagent_knowledge", "user_policy_candidate"} and record.get("confidence") != "verified":
+        reasons.append(f"{target} requires verified confidence")
+    if target == "user_policy_candidate" and request.get("human_gate_approved") is not True:
+        reasons.append("user_policy_candidate requires explicit Human Gate approval")
 
     approved = not reasons
-    status = "ok" if approved else "blocked"
     return _envelope(
         "promote",
-        status,
-        data={
+        "ok" if approved else "blocked",
+        {
             "memory_id": memory_id,
             "target": target,
             "approved": approved,
             "writes_external_authority": False,
-            "promotion_projection": _compact_record(record) if approved else None,
-            "required_next_action": (
-                "caller_may_submit_to_target_authority"
-                if approved
-                else "resolve_promotion_gate"
-            ),
+            "promotion_projection": _compact(record) if approved else None,
+            "required_next_action": "caller_may_submit_to_target_authority" if approved else "resolve_promotion_gate",
         },
-        diagnostics=[{"code": "promotion_gate", "message": reason} for reason in reasons],
+        [{"code": "promotion_gate", "message": reason} for reason in reasons],
         mutated=False,
     )
 
@@ -767,52 +621,33 @@ OPERATIONS = {
 def execute(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
     operation = str(request.get("operation", "")).strip()
     handler = OPERATIONS.get(operation)
-    if handler is None:
-        raise MemoryErrorContract(
-            "unsupported_operation",
-            f"operation must be one of {sorted(OPERATIONS)}",
-        )
+    if not handler:
+        raise MemoryErrorContract("unsupported_operation", f"operation must be one of {sorted(OPERATIONS)}")
     return handler(workspace, request)
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Store and retrieve layered Graph Engineering memory with evidence-preserving drill-down."
-    )
-    parser.add_argument("--workspace-root", default=".", help="Execution workspace root.")
-    parser.add_argument("--request", required=True, help="UTF-8 JSON request file.")
-    return parser
-
-
 def main(argv: list[str] | None = None) -> int:
-    parser = _build_parser()
+    parser = argparse.ArgumentParser(description="Evidence-preserving layered memory controller.")
+    parser.add_argument("--workspace-root", default=".")
+    parser.add_argument("--request", required=True)
     args = parser.parse_args(argv)
     operation = "unknown"
     try:
-        workspace = _workspace_root(args.workspace_root)
-        request_path = Path(args.request).expanduser().resolve()
-        request = json.loads(request_path.read_text(encoding="utf-8"))
+        workspace = Path(args.workspace_root).expanduser().resolve()
+        if not workspace.is_dir():
+            raise MemoryErrorContract("workspace_not_found", f"workspace root does not exist: {workspace}")
+        request = json.loads(Path(args.request).expanduser().resolve().read_text(encoding="utf-8"))
         if not isinstance(request, dict):
             raise MemoryErrorContract("invalid_request", "request must be a JSON object")
         operation = str(request.get("operation", "unknown"))
         result = execute(workspace, request)
-    except FileNotFoundError as exc:
-        result = _envelope(operation, "invalid_request", diagnostics=[{"code": "request_not_found", "message": str(exc)}])
-    except json.JSONDecodeError as exc:
-        result = _envelope(operation, "invalid_request", diagnostics=[{"code": "invalid_json", "message": str(exc)}])
+    except (FileNotFoundError, json.JSONDecodeError) as exc:
+        result = _envelope(operation, "invalid_request", diagnostics=[{"code": "invalid_request_file", "message": str(exc)}])
     except MemoryErrorContract as exc:
-        result = _envelope(
-            operation,
-            exc.status,
-            diagnostics=[{"code": exc.code, "message": exc.message}],
-        )
+        result = _envelope(operation, exc.status, diagnostics=[{"code": exc.code, "message": exc.message}])
 
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    if result["status"] == "ok":
-        return 0
-    if result["status"] == "blocked":
-        return 3
-    return 4
+    return 0 if result["status"] == "ok" else 3 if result["status"] == "blocked" else 4
 
 
 if __name__ == "__main__":
