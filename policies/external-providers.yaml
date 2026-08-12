@@ -42,6 +42,28 @@ providers:
     required: false
     profiles:
       - personal_full_control
+    adapter:
+      path: Tools/IxAdapter/ix_adapter.py
+      output: normalized_json_envelope
+      auto_install: false
+      arbitrary_command_passthrough: false
+      destructive_commands_exposed: false
+      shell_execution: false
+      allowed_operations:
+        - probe
+        - status
+        - map
+        - explain
+        - impact
+        - trace
+        - callers
+        - callees
+      trace_defaults:
+        depth: 3
+        cap_per_direction: 100
+      query_timeout_seconds: 30
+      map_timeout_seconds: 120
+      unavailable_fallback: targeted_source_read
     capabilities:
       - map
       - explain
@@ -60,6 +82,8 @@ providers:
       low_confidence_must_be_reported: true
       direct_source_verification_before_mutation: true
       graph_result_alone_cannot_prove_runtime_behavior: true
+      trace_must_be_bounded: true
+      reset_command_forbidden: true
     fallback:
       - targeted_source_read
       - repository_search
