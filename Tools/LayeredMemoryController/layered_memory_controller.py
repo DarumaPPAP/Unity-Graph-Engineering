@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Evidence-preserving layered memory controller for Unity Graph Engineering."""
+"""Evidence-preserving layered memory controller for Unity Graph Engineering.
+
+Security model:
+- raw evidence is source-faithful and never replaced by summaries;
+- non-personal profiles cannot read or derive project-internal memory;
+- higher layers inherit the most restrictive scope of their references;
+- promotion is a projection only and never writes UnityAgent/User Policy.
+"""
 
 from __future__ import annotations
 
@@ -12,9 +19,9 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 MAX_RAW_BYTES = 2 * 1024 * 1024
 DEFAULT_MAX_ITEMS = 8
 DEFAULT_MAX_CHARS = 6000
@@ -25,7 +32,8 @@ LAYERS = ("L0_raw_evidence", "L1_atom", "L2_scenario", "L3_reusable_candidate")
 LAYER_DIR = dict(zip(LAYERS, ("L0", "L1", "L2", "L3")))
 LAYER_WEIGHT = dict(zip(LAYERS, (1.0, 2.0, 3.0, 4.0)))
 PROFILES = {"generic_planning", "personal_full_control", "team_safe_import"}
-TEAM_SAFE_SCOPES = {"portable_artifact", "public_reference"}
+SAFE_SCOPES = {"portable_artifact", "public_reference"}
+SCOPE_RANK = {"public_reference": 0, "portable_artifact": 1, "project_internal": 2}
 CONFIDENCE = {"verified", "probable", "unverified"}
 REVIEW = {"not_required", "pending", "approved", "rejected"}
 PROMOTION = {"none", "execution_reference", "unityagent_knowledge", "user_policy_candidate"}
@@ -75,6 +83,33 @@ def _list(value: Any, field: str, required: bool = False) -> list[str]:
     if required and not result:
         raise MemoryErrorContract("invalid_request", f"{field} must not be empty")
     return result
+
+
+def _profile(request: dict[str, Any]) -> str:
+    profile = str(request.get("execution_profile", "generic_planning"))
+    if profile not in PROFILES:
+        raise MemoryErrorContract("invalid_profile", f"unsupported execution_profile: {profile}")
+    return profile
+
+
+def _scope(value: Any, field: str = "scope_class") -> str:
+    scope = str(value or "portable_artifact").strip()
+    if scope not in SCOPE_RANK:
+        raise MemoryErrorContract("invalid_scope", f"{field} must be one of {sorted(SCOPE_RANK)}")
+    return scope
+
+
+def _scope_allowed(profile: str, scope: str) -> bool:
+    return profile == "personal_full_control" or scope in SAFE_SCOPES
+
+
+def _guard_scope(profile: str, scope: str, action: str) -> None:
+    if not _scope_allowed(profile, scope):
+        raise MemoryErrorContract(
+            "memory_scope_forbidden",
+            f"{profile} may not {action} {scope} memory; allowed scopes are {sorted(SAFE_SCOPES)}",
+            "blocked",
+        )
 
 
 def _memory_root(workspace: Path) -> Path:
@@ -147,28 +182,26 @@ def _load_record(workspace: Path, memory_id: str) -> dict[str, Any]:
     raise MemoryErrorContract("memory_not_found", f"memory record not found: {memory_id}")
 
 
-def _profile(request: dict[str, Any]) -> str:
-    profile = str(request.get("execution_profile", "generic_planning"))
-    if profile not in PROFILES:
-        raise MemoryErrorContract("invalid_profile", f"unsupported execution_profile: {profile}")
-    return profile
+def _record_scope(record: dict[str, Any]) -> str:
+    # Legacy records without an explicit scope are treated as project-internal.
+    if "scope_class" not in record:
+        return "project_internal"
+    return _scope(record.get("scope_class"))
 
 
-def _guard_capture_scope(request: dict[str, Any]) -> tuple[str, str]:
-    profile = _profile(request)
-    scope = str(request.get("scope_class", "portable_artifact")).strip()
-    if profile == "team_safe_import" and scope not in TEAM_SAFE_SCOPES:
-        raise MemoryErrorContract(
-            "team_safe_scope_forbidden",
-            f"team_safe_import may capture only {sorted(TEAM_SAFE_SCOPES)}",
-            "blocked",
-        )
-    return profile, scope
+def _load_accessible_record(workspace: Path, memory_id: str, profile: str, action: str) -> dict[str, Any]:
+    record = _load_record(workspace, memory_id)
+    _guard_scope(profile, _record_scope(record), action)
+    return record
 
 
 def _guard_secret(text: str, sensitivity: str) -> None:
     if sensitivity.lower() == "secret":
-        raise MemoryErrorContract("secret_capture_forbidden", "secret-classified raw evidence must not be stored", "blocked")
+        raise MemoryErrorContract(
+            "secret_capture_forbidden",
+            "secret-classified raw evidence must not be stored",
+            "blocked",
+        )
     findings = [code for code, pattern in SECRET_PATTERNS if pattern.search(text)]
     if findings:
         raise MemoryErrorContract(
@@ -178,29 +211,56 @@ def _guard_secret(text: str, sensitivity: str) -> None:
         )
 
 
-def _validate_refs(workspace: Path, refs: list[str], expected_layer: str, field: str) -> list[str]:
+def _derive_scope(records: Iterable[dict[str, Any]], requested: Any = None) -> str:
+    inherited_rank = max((SCOPE_RANK[_record_scope(record)] for record in records), default=0)
+    inherited = next(name for name, rank in SCOPE_RANK.items() if rank == inherited_rank)
+    if requested is None:
+        return inherited
+    requested_scope = _scope(requested)
+    if SCOPE_RANK[requested_scope] < inherited_rank:
+        raise MemoryErrorContract(
+            "scope_downgrade_forbidden",
+            f"requested scope {requested_scope} is less restrictive than inherited scope {inherited}",
+            "blocked",
+        )
+    return requested_scope
+
+
+def _validate_refs(
+    workspace: Path,
+    refs: list[str],
+    expected_layer: str,
+    field: str,
+    profile: str,
+) -> tuple[list[str], list[dict[str, Any]]]:
     normalized = [_safe_id(ref, field) for ref in refs]
+    records = []
     for ref in normalized:
-        actual = _load_record(workspace, ref).get("layer")
+        record = _load_accessible_record(workspace, ref, profile, "derive from")
+        actual = record.get("layer")
         if actual != expected_layer:
             raise MemoryErrorContract(
                 "invalid_reference_layer",
                 f"{field} {ref} must reference {expected_layer}, got {actual}",
             )
-    return normalized
+        records.append(record)
+    return normalized, records
 
 
-def _relation_refs(workspace: Path, request: dict[str, Any], field: str) -> list[str]:
+def _relation_refs(workspace: Path, request: dict[str, Any], field: str, profile: str) -> list[str]:
     refs = [_safe_id(ref, field) for ref in _list(request.get(field), field)]
     for ref in refs:
-        _load_record(workspace, ref)
+        _load_accessible_record(workspace, ref, profile, "relate to")
     return refs
 
 
 def capture_raw(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
     evidence_id = _safe_id(request.get("evidence_id"), "evidence_id")
-    profile, scope = _guard_capture_scope(request)
+    profile = _profile(request)
+    scope = _scope(request.get("scope_class", "portable_artifact"))
+    _guard_scope(profile, scope, "capture")
 
+    # Scope is checked before touching source_file. Critical for team_safe/generic.
     source = Path(str(request.get("source_file", ""))).expanduser().resolve()
     if not source.is_file():
         raise MemoryErrorContract("source_file_not_found", f"source_file does not exist: {source}")
@@ -229,6 +289,8 @@ def capture_raw(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
             existing = _read_json(meta_path)
             if existing.get("sha256") != digest:
                 raise MemoryErrorContract("id_conflict", f"metadata for {evidence_id} has a different digest", "blocked")
+            if _record_scope(existing) != scope:
+                raise MemoryErrorContract("id_conflict", f"raw evidence {evidence_id} already has a different scope", "blocked")
             return _envelope("capture_raw", "ok", existing, mutated=False)
 
     metadata = {
@@ -254,12 +316,15 @@ def capture_raw(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
         "scope_class": scope,
         "sensitivity": str(request.get("sensitivity", "internal")),
         "repository": request.get("repository"),
+        "unity_version": request.get("unity_version"),
+        "platform": request.get("platform"),
         "run_id": request.get("run_id"),
+        "tags": _list(request.get("tags"), "tags"),
     }
 
     if meta_path.exists():
         existing = _read_json(meta_path)
-        if existing.get("sha256") != digest:
+        if existing.get("sha256") != digest or _record_scope(existing) != scope:
             raise MemoryErrorContract("id_conflict", f"metadata for {evidence_id} already has different content", "blocked")
         metadata = existing
 
@@ -271,13 +336,17 @@ def capture_raw(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
         _write_json(meta_path, metadata)
         mutated = True
     if mutated:
-        _append_event(workspace, {
-            "event": "memory_created",
-            "memory_id": evidence_id,
-            "layer": "L0_raw_evidence",
-            "captured_at": _now(),
-            "sha256": digest,
-        })
+        _append_event(
+            workspace,
+            {
+                "event": "memory_created",
+                "memory_id": evidence_id,
+                "layer": "L0_raw_evidence",
+                "captured_at": _now(),
+                "sha256": digest,
+                "scope_class": scope,
+            },
+        )
     return _envelope("capture_raw", "ok", metadata, mutated=mutated)
 
 
@@ -288,6 +357,7 @@ def _new_record(
     ref_field: str,
     ref_layer: str,
 ) -> dict[str, Any]:
+    profile = _profile(request)
     memory_id = _safe_id(request.get("memory_id"), "memory_id")
     statement = str(request.get("statement", "")).strip()
     if not statement:
@@ -303,9 +373,17 @@ def _new_record(
     if promotion not in PROMOTION:
         raise MemoryErrorContract("invalid_promotion_target", f"unsupported promotion_target: {promotion}")
 
-    refs = _validate_refs(workspace, _list(request.get(ref_field), ref_field, required=True), ref_layer, ref_field)
-    supersedes = _relation_refs(workspace, request, "supersedes")
-    conflicts = _relation_refs(workspace, request, "conflicts_with")
+    refs, parent_records = _validate_refs(
+        workspace,
+        _list(request.get(ref_field), ref_field, required=True),
+        ref_layer,
+        ref_field,
+        profile,
+    )
+    scope = _derive_scope(parent_records, request.get("scope_class"))
+    _guard_scope(profile, scope, "create")
+    supersedes = _relation_refs(workspace, request, "supersedes", profile)
+    conflicts = _relation_refs(workspace, request, "conflicts_with", profile)
     if memory_id in supersedes or memory_id in conflicts:
         raise MemoryErrorContract("self_reference", "memory record cannot reference itself")
 
@@ -329,6 +407,8 @@ def _new_record(
         "unity_version": request.get("unity_version"),
         "platform": request.get("platform"),
         "tags": _list(request.get("tags"), "tags"),
+        "execution_profile": profile,
+        "scope_class": scope,
     }
 
 
@@ -343,16 +423,19 @@ def _store_record(workspace: Path, record: dict[str, Any], operation: str) -> di
             f"{record['memory_id']} already exists; use supersedes/conflicts_with instead of overwrite",
             "blocked",
         )
-
     _write_json(path, record)
-    _append_event(workspace, {
-        "event": "memory_created",
-        "memory_id": record["memory_id"],
-        "layer": record["layer"],
-        "captured_at": _now(),
-        "supersedes": record["supersedes"],
-        "conflicts_with": record["conflicts_with"],
-    })
+    _append_event(
+        workspace,
+        {
+            "event": "memory_created",
+            "memory_id": record["memory_id"],
+            "layer": record["layer"],
+            "captured_at": _now(),
+            "scope_class": record["scope_class"],
+            "supersedes": record["supersedes"],
+            "conflicts_with": record["conflicts_with"],
+        },
+    )
     return _envelope(operation, "ok", record, mutated=True)
 
 
@@ -398,7 +481,16 @@ def _tokens(value: Any) -> set[str]:
 
 def _score(record: dict[str, Any], query: set[str], context: dict[str, Any]) -> float:
     searchable = set()
-    for field in ("statement", "applicability", "limits", "provenance", "tags", "repository", "unity_version", "platform"):
+    for field in (
+        "statement",
+        "applicability",
+        "limits",
+        "provenance",
+        "tags",
+        "repository",
+        "unity_version",
+        "platform",
+    ):
         searchable |= _tokens(record.get(field))
     score = len(query & searchable) * 10.0 + LAYER_WEIGHT.get(record.get("layer"), 0.0)
     for field, bonus in (("repository", 4.0), ("unity_version", 2.0), ("platform", 2.0)):
@@ -412,16 +504,29 @@ def _score(record: dict[str, Any], query: set[str], context: dict[str, Any]) -> 
 
 
 def _compact(record: dict[str, Any]) -> dict[str, Any]:
+    list_fields = {"applicability", "limits", "provenance", "supersedes", "conflicts_with"}
     return {
-        key: record.get(key, [] if key in {"applicability", "limits", "provenance", "supersedes", "conflicts_with"} else None)
+        key: record.get(key, [] if key in list_fields else None)
         for key in (
-            "memory_id", "layer", "statement", "confidence", "applicability", "limits",
-            "provenance", "supersedes", "conflicts_with", "repository", "unity_version", "platform",
+            "memory_id",
+            "layer",
+            "statement",
+            "confidence",
+            "applicability",
+            "limits",
+            "provenance",
+            "supersedes",
+            "conflicts_with",
+            "repository",
+            "unity_version",
+            "platform",
+            "scope_class",
         )
     }
 
 
 def retrieve(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
+    profile = _profile(request)
     query_text = str(request.get("query", "")).strip()
     query = _tokens(query_text)
     max_items = int(request.get("max_items", DEFAULT_MAX_ITEMS))
@@ -439,15 +544,28 @@ def retrieve(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
 
     context = {field: request.get(field) for field in ("repository", "unity_version", "platform")}
     ranked = []
+    excluded_scope_count = 0
     for record in _records(workspace):
         if record.get("layer") not in allowed:
             continue
+        if not _scope_allowed(profile, _record_scope(record)):
+            excluded_scope_count += 1
+            continue
         score = _score(record, query, context)
-        base = LAYER_WEIGHT.get(record.get("layer"), 0.0) + (1.0 if record.get("confidence") == "verified" else 0.0)
+        base = LAYER_WEIGHT.get(record.get("layer"), 0.0) + (
+            1.0 if record.get("confidence") == "verified" else 0.0
+        )
         if query and score <= base:
             continue
         ranked.append((score, record))
-    ranked.sort(key=lambda item: (item[0], LAYER_WEIGHT.get(item[1].get("layer"), 0.0), item[1].get("created_at", "")), reverse=True)
+    ranked.sort(
+        key=lambda item: (
+            item[0],
+            LAYER_WEIGHT.get(item[1].get("layer"), 0.0),
+            item[1].get("created_at", ""),
+        ),
+        reverse=True,
+    )
 
     items, used, truncated = [], 0, False
     for score, record in ranked:
@@ -467,15 +585,29 @@ def retrieve(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
         items.append(item)
         used += size
 
-    return _envelope("retrieve", "ok", {
-        "query": query_text,
-        "items": items,
-        "item_count": len(items),
-        "characters": used,
-        "truncated": truncated,
-        "raw_content_included": False,
-        "retrieval_policy": "layer_weighted_lexical_then_context_affinity",
-    })
+    diagnostics = []
+    if excluded_scope_count:
+        diagnostics.append(
+            {
+                "code": "memory_scope_filtered",
+                "message": f"{excluded_scope_count} memory records were excluded by execution_profile scope.",
+            }
+        )
+    return _envelope(
+        "retrieve",
+        "ok",
+        {
+            "query": query_text,
+            "execution_profile": profile,
+            "items": items,
+            "item_count": len(items),
+            "characters": used,
+            "truncated": truncated,
+            "raw_content_included": False,
+            "retrieval_policy": "scope_filter_then_layer_weighted_lexical_context_affinity",
+        },
+        diagnostics=diagnostics,
+    )
 
 
 def _children(record: dict[str, Any]) -> list[str]:
@@ -488,6 +620,7 @@ def _children(record: dict[str, Any]) -> list[str]:
 
 
 def drilldown(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
+    profile = _profile(request)
     root_id = _safe_id(request.get("memory_id"), "memory_id")
     include_raw = bool(request.get("include_raw_content", False))
     max_chars = int(request.get("max_chars", DEFAULT_MAX_CHARS))
@@ -500,7 +633,7 @@ def drilldown(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
         if memory_id in visited:
             return
         visited.add(memory_id)
-        record = _load_record(workspace, memory_id)
+        record = _load_accessible_record(workspace, memory_id, profile, "drill down into")
         ordered.append(record)
         for child in _children(record):
             walk(child)
@@ -539,13 +672,18 @@ def drilldown(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
         output.append(item)
         used += len(encoded)
 
-    return _envelope("drilldown", "ok", {
-        "root_memory_id": root_id,
-        "records": output,
-        "characters": used,
-        "truncated": truncated,
-        "raw_content_included": include_raw,
-    })
+    return _envelope(
+        "drilldown",
+        "ok",
+        {
+            "root_memory_id": root_id,
+            "execution_profile": profile,
+            "records": output,
+            "characters": used,
+            "truncated": truncated,
+            "raw_content_included": include_raw,
+        },
+    )
 
 
 def project(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
@@ -553,14 +691,24 @@ def project(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
     items = result["data"]["items"]
     result["operation"] = "project"
     result["data"] = {
-        "projection_id": str(request.get("projection_id") or f"projection-{hashlib.sha256(str(request.get('query','')).encode()).hexdigest()[:12]}"),
+        "projection_id": str(
+            request.get("projection_id")
+            or f"projection-{hashlib.sha256(str(request.get('query','')).encode()).hexdigest()[:12]}"
+        ),
+        "execution_profile": result["data"]["execution_profile"],
         "highest_layer": items[0]["layer"] if items else None,
         "items": items,
-        "raw_evidence_refs": sorted({
-            ref
-            for item in items
-            for ref in (_load_record(workspace, item["memory_id"]).get("raw_refs", []) if item["layer"] == "L0_raw_evidence" else [])
-        }),
+        "raw_evidence_refs": sorted(
+            {
+                ref
+                for item in items
+                for ref in (
+                    _load_record(workspace, item["memory_id"]).get("raw_refs", [])
+                    if item["layer"] == "L0_raw_evidence"
+                    else []
+                )
+            }
+        ),
         "raw_content_included": False,
         "source_of_truth": "STATE/current.yaml + Evidence/raw + STATE/memory",
         "characters": result["data"]["characters"],
@@ -570,8 +718,9 @@ def project(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
 
 
 def promote(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
+    profile = _profile(request)
     memory_id = _safe_id(request.get("memory_id"), "memory_id")
-    record = _load_record(workspace, memory_id)
+    record = _load_accessible_record(workspace, memory_id, profile, "promote")
     if record.get("layer") != "L3_reusable_candidate":
         raise MemoryErrorContract("promotion_requires_l3", "only L3 reusable candidates may be promoted")
 
@@ -599,7 +748,9 @@ def promote(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
             "approved": approved,
             "writes_external_authority": False,
             "promotion_projection": _compact(record) if approved else None,
-            "required_next_action": "caller_may_submit_to_target_authority" if approved else "resolve_promotion_gate",
+            "required_next_action": (
+                "caller_may_submit_to_target_authority" if approved else "resolve_promotion_gate"
+            ),
         },
         [{"code": "promotion_gate", "message": reason} for reason in reasons],
         mutated=False,
@@ -626,25 +777,43 @@ def execute(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
     return handler(workspace, request)
 
 
+def _read_request(path_value: str) -> dict[str, Any]:
+    text = (
+        sys.stdin.read()
+        if path_value == "-"
+        else Path(path_value).expanduser().resolve().read_text(encoding="utf-8")
+    )
+    value = json.loads(text)
+    if not isinstance(value, dict):
+        raise MemoryErrorContract("invalid_request", "request must be a JSON object")
+    return value
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Evidence-preserving layered memory controller.")
     parser.add_argument("--workspace-root", default=".")
-    parser.add_argument("--request", required=True)
+    parser.add_argument("--request", required=True, help="Request JSON path or '-' for stdin.")
     args = parser.parse_args(argv)
     operation = "unknown"
     try:
         workspace = Path(args.workspace_root).expanduser().resolve()
         if not workspace.is_dir():
             raise MemoryErrorContract("workspace_not_found", f"workspace root does not exist: {workspace}")
-        request = json.loads(Path(args.request).expanduser().resolve().read_text(encoding="utf-8"))
-        if not isinstance(request, dict):
-            raise MemoryErrorContract("invalid_request", "request must be a JSON object")
+        request = _read_request(args.request)
         operation = str(request.get("operation", "unknown"))
         result = execute(workspace, request)
     except (FileNotFoundError, json.JSONDecodeError) as exc:
-        result = _envelope(operation, "invalid_request", diagnostics=[{"code": "invalid_request_file", "message": str(exc)}])
+        result = _envelope(
+            operation,
+            "invalid_request",
+            diagnostics=[{"code": "invalid_request_file", "message": str(exc)}],
+        )
     except MemoryErrorContract as exc:
-        result = _envelope(operation, exc.status, diagnostics=[{"code": exc.code, "message": exc.message}])
+        result = _envelope(
+            operation,
+            exc.status,
+            diagnostics=[{"code": exc.code, "message": exc.message}],
+        )
 
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result["status"] == "ok" else 3 if result["status"] == "blocked" else 4
