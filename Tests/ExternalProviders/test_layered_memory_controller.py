@@ -101,6 +101,22 @@ class LayeredMemoryControllerTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertFalse(result["mutated"])
 
+    def test_capture_same_id_same_content_is_idempotent_without_fixed_timestamp(self):
+        source = self.workspace / "dynamic.txt"
+        source.write_text("same", encoding="utf-8")
+        request = {
+            "operation": "capture_raw",
+            "evidence_id": "ev-dynamic",
+            "source_file": str(source),
+            "source_type": "test_result",
+            "execution_profile": "personal_full_control",
+            "scope_class": "project_internal",
+        }
+        first = memory.execute(self.workspace, request)
+        second = memory.execute(self.workspace, request)
+        self.assertTrue(first["mutated"])
+        self.assertFalse(second["mutated"])
+
     def test_capture_same_id_different_content_is_blocked(self):
         self.capture()
         with self.assertRaises(memory.MemoryErrorContract) as caught:
@@ -115,6 +131,18 @@ class LayeredMemoryControllerTests(unittest.TestCase):
     def test_team_safe_rejects_project_internal_capture(self):
         with self.assertRaises(memory.MemoryErrorContract) as caught:
             self.capture(execution_profile="team_safe_import", scope_class="project_internal")
+        self.assertEqual(caught.exception.code, "team_safe_scope_forbidden")
+
+    def test_team_safe_scope_blocks_before_source_file_access(self):
+        request = {
+            "operation": "capture_raw",
+            "evidence_id": "ev-forbidden",
+            "source_file": str(self.workspace / "does-not-exist.txt"),
+            "execution_profile": "team_safe_import",
+            "scope_class": "project_internal",
+        }
+        with self.assertRaises(memory.MemoryErrorContract) as caught:
+            memory.execute(self.workspace, request)
         self.assertEqual(caught.exception.code, "team_safe_scope_forbidden")
 
     def test_atom_requires_l0_reference(self):
