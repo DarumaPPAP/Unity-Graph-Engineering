@@ -1,19 +1,33 @@
 $schema: "https://json-schema.org/draft/2020-12/schema"
-title: Unity Graph Layered Memory
+title: Unity Graph Layered Memory Record
 type: object
 required:
   - memory_id
   - layer
   - created_at
+  - statement
+  - raw_refs
+  - atom_refs
+  - scenario_refs
+  - applicability
+  - limits
+  - confidence
+  - provenance
+  - promotion_target
+  - review_status
+  - supersedes
+  - conflicts_with
 properties:
   memory_id:
     type: string
+    pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
   layer:
     enum: [L0_raw_evidence, L1_atom, L2_scenario, L3_reusable_candidate]
   created_at:
     type: string
   statement:
-    type: [string, "null"]
+    type: string
+    minLength: 1
   raw_refs:
     type: array
     items:
@@ -52,4 +66,78 @@ properties:
     type: array
     items:
       type: string
+  repository:
+    type: [string, "null"]
+  unity_version:
+    type: [string, "null"]
+  platform:
+    type: [string, "null"]
+  tags:
+    type: array
+    items:
+      type: string
+  source_type:
+    type: string
+  sha256:
+    type: string
+    pattern: "^[a-f0-9]{64}$"
+  byte_count:
+    type: integer
+    minimum: 0
+    maximum: 2097152
+  execution_profile:
+    enum: [generic_planning, personal_full_control, team_safe_import]
+  scope_class:
+    type: string
+  sensitivity:
+    type: string
+  run_id:
+    type: [string, "null"]
+allOf:
+  - if:
+      properties:
+        layer:
+          const: L0_raw_evidence
+    then:
+      required: [source_type, sha256, byte_count, execution_profile, scope_class, sensitivity]
+      properties:
+        raw_refs:
+          minItems: 1
+        confidence:
+          const: verified
+        promotion_target:
+          const: none
+  - if:
+      properties:
+        layer:
+          const: L1_atom
+    then:
+      properties:
+        raw_refs:
+          minItems: 1
+  - if:
+      properties:
+        layer:
+          const: L2_scenario
+    then:
+      properties:
+        atom_refs:
+          minItems: 1
+        applicability:
+          minItems: 1
+        limits:
+          minItems: 1
+  - if:
+      properties:
+        layer:
+          const: L3_reusable_candidate
+    then:
+      properties:
+        scenario_refs:
+          minItems: 1
+        provenance:
+          minItems: 1
+        promotion_target:
+          not:
+            const: none
 additionalProperties: false
