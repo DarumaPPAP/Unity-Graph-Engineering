@@ -56,6 +56,12 @@ REQUIRED_FILES = {
         "raw_evidence_required: true",
         "symbolic_projection_is_not_source_of_truth: true",
         "auto_update_user_policy: false",
+        "implementation: Tools/LayeredMemoryController/layered_memory_controller.py",
+        "controller_writes_external_authority: false",
+        "team_safe_scope_guard_before_source_read: true",
+        "hard_max_items: 20",
+        "hard_max_characters: 12000",
+        "raw_content_requires_explicit_drilldown: true",
     ],
     "schemas/execution-state.schema.yaml": [
         "execution_mode:",
@@ -81,7 +87,11 @@ REQUIRED_FILES = {
     "schemas/memory-layer.schema.yaml": [
         "L0_raw_evidence",
         "L3_reusable_candidate",
+        "sha256:",
+        "execution_profile:",
+        "scope_class:",
         "promotion_target:",
+        "additionalProperties: false",
     ],
     "skills/unity-execution-router/SKILL.md": [
         "無指定時は必ず`prompt`",
@@ -112,6 +122,12 @@ REQUIRED_FILES = {
         "spend",
         "monitor_quiet_skip",
     ],
+    "skills/unity-graph-engineering/references/layered-memory.md": [
+        "Tools/LayeredMemoryController/layered_memory_controller.py",
+        "source file read前",
+        "Raw content: default OFF",
+        "promote`は**Projectionを返すだけ**",
+    ],
     "Tools/IxAdapter/ix_adapter.py": [
         "SAFE_OPERATIONS",
         "DEFAULT_TRACE_DEPTH = 3",
@@ -126,6 +142,20 @@ REQUIRED_FILES = {
         "OWNER_HELD_CAPABILITIES",
         "monitor_quiet_skip",
         "quota cannot be spent before durable writeback",
+    ],
+    "Tools/LayeredMemoryController/layered_memory_controller.py": [
+        "def capture_raw(",
+        "def create_atom(",
+        "def create_scenario(",
+        "def create_candidate(",
+        "def retrieve(",
+        "def drilldown(",
+        "def project(",
+        "def promote(",
+        "TEAM_SAFE_SCOPES",
+        "MAX_ITEMS = 20",
+        "MAX_CHARS = 12000",
+        "writes_external_authority",
     ],
     "Tests/ExecutionRouting/cases.yaml": [
         "expected_initial_mode: prompt",
@@ -146,6 +176,13 @@ REQUIRED_FILES = {
         "test_human_gate_precedes_quota",
         "test_monitor_only_lane_is_quiet",
         "test_spend_updates_projection_only_after_validated_writeback",
+    ],
+    "Tests/ExternalProviders/test_layered_memory_controller.py": [
+        "test_capture_preserves_raw_and_sha256",
+        "test_team_safe_scope_blocks_before_source_file_access",
+        "test_retrieve_prefers_higher_layer_and_never_includes_raw_content",
+        "test_user_policy_candidate_requires_human_gate",
+        "test_promotion_never_writes_unityagent",
     ],
 }
 
@@ -221,6 +258,26 @@ def validate(root: Path) -> list[str]:
             errors.append("Layered memory must preserve raw evidence.")
         if "auto_update_user_policy: false" not in text:
             errors.append("Memory must not auto-update user policy.")
+        if "controller_writes_external_authority: false" not in text:
+            errors.append("Memory controller must not own UnityAgent or user-policy authority.")
+        if "raw_content_requires_explicit_drilldown: true" not in text:
+            errors.append("Raw memory content must require explicit drill-down.")
+
+    memory_controller = root / "Tools/LayeredMemoryController/layered_memory_controller.py"
+    if memory_controller.is_file():
+        text = memory_controller.read_text(encoding="utf-8")
+        guard = text.find("profile, scope = _guard_capture_scope(request)")
+        source_read = text.find("raw = source.read_bytes()")
+        if guard < 0 or source_read < 0 or guard > source_read:
+            errors.append("Team Safe memory scope guard must execute before reading the source file.")
+        if '"writes_external_authority": False' not in text:
+            errors.append("Memory promotion must remain a projection and never write external authority directly.")
+        if '"raw_content_included": False' not in text:
+            errors.append("Memory retrieval/projection must exclude raw content by default.")
+        if "MAX_ITEMS = 20" not in text or "MAX_CHARS = 12000" not in text:
+            errors.append("Memory retrieval must keep hard item and character bounds.")
+        if "secret_capture_forbidden" not in text:
+            errors.append("Memory capture must keep the secret-capture guard.")
 
     return errors
 
