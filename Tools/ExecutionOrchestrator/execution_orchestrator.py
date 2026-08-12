@@ -1,17 +1,10 @@
 #!/usr/bin/env python3
 """Execution Orchestrator for Unity Graph Engineering.
 
-This control-plane tool composes the native Continuation Controller, optional
-Ix navigation, and the Layered Memory Controller without becoming source-of-
-truth state or an arbitrary command runner.
-
-Two-phase contract:
-1. prepare  -> gate/claim/navigation/memory/source-verification -> execution ticket
-2. finalize -> preserve evidence -> optional atom -> quota-spend projection
-
-The caller remains responsible for the bounded work itself and for durable
-STATE/current.yaml writeback. The orchestrator returns explicit writeback
-projections and never edits project source or STATE/current.yaml directly.
+The orchestrator composes fixed JSON contracts only. It coordinates
+Continuation, optional Ix navigation, direct source verification, Layered
+Memory, evidence admission and quota accounting, but owns none of their
+underlying authorities.
 """
 
 from __future__ import annotations
@@ -25,7 +18,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 PROFILES = {"generic_planning", "personal_full_control", "team_safe_import"}
 WORK_KINDS = {"mutation", "verification", "analysis"}
 SAFE_NON_PERSONAL_SCOPES = {"portable_artifact", "public_reference"}
@@ -99,6 +92,13 @@ def _path_under_workspace(workspace: Path, value: str, field: str, *, require_fi
     return resolved
 
 
+def _workspace_relative(workspace: Path, path: Path) -> str:
+    try:
+        return path.relative_to(workspace).as_posix()
+    except ValueError as exc:
+        raise OrchestrationError("path_escape_forbidden", f"path escapes workspace: {path}") from exc
+
+
 def _run_json(
     command: list[str],
     payload: dict[str, Any] | None,
@@ -110,7 +110,6 @@ def _run_json(
         raise OrchestrationError("invalid_timeout", "controller timeout must be greater than zero", "invalid_request")
     if not command:
         raise OrchestrationError("invalid_command", "controller command must not be empty", "invalid_request")
-
     try:
         completed = subprocess.run(
             command,
@@ -124,10 +123,7 @@ def _run_json(
             shell=False,
         )
     except subprocess.TimeoutExpired as exc:
-        raise OrchestrationError(
-            "controller_timeout",
-            f"controller timed out: {command[1] if len(command) > 1 else command[0]}",
-        ) from exc
+        raise OrchestrationError("controller_timeout", "controller invocation timed out") from exc
     except OSError as exc:
         raise OrchestrationError("controller_launch_failed", str(exc)) from exc
 
@@ -141,7 +137,6 @@ def _run_json(
         ) from exc
     if not isinstance(result, dict):
         raise OrchestrationError("controller_contract_breach", "controller result must be a JSON object")
-
     if expected_identity is not None:
         key, expected = expected_identity
         if result.get(key) != expected:
@@ -149,12 +144,8 @@ def _run_json(
                 "controller_identity_mismatch",
                 f"expected {key}={expected}, got {result.get(key)!r}",
             )
-
     if completed.returncode != 0 and "status" not in result:
-        raise OrchestrationError(
-            "controller_failed",
-            f"controller exited {completed.returncode} without a typed status",
-        )
+        raise OrchestrationError("controller_failed", f"controller exited {completed.returncode} without typed status")
     return result
 
 
@@ -203,14 +194,7 @@ def _ix(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
             "invalid_request",
         )
     target = _text(request.get("target"), "code_intelligence.target")
-    command = [
-        sys.executable,
-        str(IX_ADAPTER),
-        operation,
-        target,
-        "--repo-root",
-        str(workspace),
-    ]
+    command = [sys.executable, str(IX_ADAPTER), operation, target, "--repo-root", str(workspace)]
     if operation == "trace":
         depth = int(request.get("depth", 3))
         cap = int(request.get("cap", 100))
@@ -242,13 +226,15 @@ def _ticket(
     decision: dict[str, Any],
     source_verification: dict[str, Any],
 ) -> dict[str, Any]:
-    selected = decision.get("selected_todo") or {}
+    selected = _dict(decision.get("selected_todo"), "decision.selected_todo")
+    todo_id = _text(selected.get("id"), "decision.selected_todo.id")
+    goal_id = _text(state.get("goal_id"), "execution_state.goal_id")
     worker = state.get("worker") or {}
     payload = {
         "schema_version": SCHEMA_VERSION,
-        "goal_id": state.get("goal_id"),
-        "selected_todo_id": selected.get("id"),
-        "worker_id": worker.get("id", "single"),
+        "goal_id": goal_id,
+        "selected_todo_id": todo_id,
+        "worker_id": str(worker.get("id", "single")),
         "execution_profile": profile,
         "work_kind": work_kind,
         "state_fingerprint": _digest(state),
@@ -276,7 +262,7 @@ def _source_verification(
     profile: str,
     work_kind: str,
     request: dict[str, Any],
-) -> tuple[bool, dict[str, Any], list[dict[str, Any]]]:
+) -> tuple[bool, dict[str, Any]]:
     source = _dict(request.get("source_verification", {}), "source_verification")
     completed = bool(source.get("completed", False))
     scope = str(
@@ -296,6 +282,7 @@ def _source_verification(
             "source_verification.evidence_refs must be an array",
             "invalid_request",
         )
+    evidence_refs = [str(item).strip() for item in evidence_refs if str(item).strip()]
 
     if profile != "personal_full_control" and scope not in SAFE_NON_PERSONAL_SCOPES:
         raise OrchestrationError(
@@ -303,8 +290,7 @@ def _source_verification(
             f"{profile} may verify only {sorted(SAFE_NON_PERSONAL_SCOPES)} source scopes",
         )
 
-    diagnostics: list[dict[str, Any]] = []
-    normalized_paths = []
+    normalized_paths: list[str] = []
     if completed:
         if not paths:
             raise OrchestrationError(
@@ -312,18 +298,20 @@ def _source_verification(
                 "completed source verification must name at least one explicitly-read path",
             )
         for value in paths:
-            normalized_paths.append(
-                str(_path_under_workspace(workspace, value, "source_verification.paths[]", require_file=True))
+            resolved = _path_under_workspace(
+                workspace,
+                value,
+                "source_verification.paths[]",
+                require_file=True,
             )
-        if not evidence_refs:
-            diagnostics.append(
-                {
-                    "code": "source_verification_without_evidence_ref",
-                    "message": "Direct source read is declared complete but no evidence_refs were supplied.",
-                }
-            )
+            normalized_paths.append(_workspace_relative(workspace, resolved))
 
     required = work_kind == "mutation" or bool(request.get("direct_source_read_required", False))
+    if required and completed and not evidence_refs:
+        raise OrchestrationError(
+            "source_verification_evidence_missing",
+            "mutation source verification requires at least one evidence_ref",
+        )
     return (
         (not required) or completed,
         {
@@ -331,9 +319,8 @@ def _source_verification(
             "required": required,
             "scope_class": scope,
             "paths": normalized_paths,
-            "evidence_refs": [str(item) for item in evidence_refs],
+            "evidence_refs": evidence_refs,
         },
-        diagnostics,
     )
 
 
@@ -341,22 +328,15 @@ def prepare(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
     profile = _profile(request)
     state = _dict(request.get("execution_state"), "execution_state")
     if state.get("execution_mode") != "graph_loop":
-        raise OrchestrationError(
-            "graph_loop_required",
-            "Execution Orchestrator only accepts execution_mode=graph_loop",
-            "invalid_request",
-        )
+        raise OrchestrationError("graph_loop_required", "Execution Orchestrator accepts graph_loop only", "invalid_request")
+    _text(state.get("goal_id"), "execution_state.goal_id")
     state_profile = state.get("execution_profile")
     if state_profile is not None and state_profile != profile:
         raise OrchestrationError("profile_mismatch", "execution_state.execution_profile differs from request profile")
 
     work_kind = str(request.get("work_kind", "mutation"))
     if work_kind not in WORK_KINDS:
-        raise OrchestrationError(
-            "invalid_work_kind",
-            f"work_kind must be one of {sorted(WORK_KINDS)}",
-            "invalid_request",
-        )
+        raise OrchestrationError("invalid_work_kind", f"work_kind must be one of {sorted(WORK_KINDS)}", "invalid_request")
     now = request.get("now")
     diagnostics: list[dict[str, Any]] = []
 
@@ -367,14 +347,8 @@ def prepare(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
             "blocked",
             ready=False,
             decision=decision,
-            diagnostics=[
-                {
-                    "code": "continuation_rejected",
-                    "message": "Continuation controller rejected the state.",
-                }
-            ],
+            diagnostics=[{"code": "continuation_rejected", "message": "Continuation controller rejected the state."}],
         )
-
     if not decision.get("should_run", False):
         return _envelope(
             "prepare",
@@ -385,9 +359,24 @@ def prepare(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
         )
 
     selected = decision.get("selected_todo")
+    if not isinstance(selected, dict) or not str(selected.get("id", "")).strip():
+        return _envelope(
+            "prepare",
+            "ok",
+            ready=False,
+            decision=decision,
+            required_next_action=decision.get("effective_action", "materialize_advancement_todo_or_blocker"),
+            diagnostics=[
+                {
+                    "code": "selected_todo_required_for_ticket",
+                    "message": "Runnable control-plane work must materialize a concrete selected todo before ticket issuance.",
+                }
+            ],
+        )
+
     worker = state.get("worker") or {}
     multiple_workers = bool(worker.get("multiple_workers", False))
-    if multiple_workers and selected is not None:
+    if multiple_workers:
         claim_projection = _continuation("claim", state, now=str(now) if now else None)
         if claim_projection.get("status") != "ok":
             return _envelope(
@@ -427,7 +416,7 @@ def prepare(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
             diagnostics.append(
                 {
                     "code": "memory_query_empty",
-                    "message": "Memory projection skipped because broad empty-query loading is forbidden by orchestrator policy.",
+                    "message": "Broad empty-query memory loading is forbidden; projection was skipped.",
                 }
             )
         else:
@@ -435,8 +424,8 @@ def prepare(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
                 "operation": "project",
                 "execution_profile": profile,
                 "query": query,
-                "max_items": min(int(memory_request.get("max_items", MAX_MEMORY_ITEMS)), MAX_MEMORY_ITEMS),
-                "max_chars": min(int(memory_request.get("max_chars", MAX_MEMORY_CHARS)), MAX_MEMORY_CHARS),
+                "max_items": min(max(1, int(memory_request.get("max_items", MAX_MEMORY_ITEMS))), MAX_MEMORY_ITEMS),
+                "max_chars": min(max(256, int(memory_request.get("max_chars", MAX_MEMORY_CHARS))), MAX_MEMORY_CHARS),
                 "repository": memory_request.get("repository"),
                 "unity_version": memory_request.get("unity_version"),
                 "platform": memory_request.get("platform"),
@@ -447,17 +436,14 @@ def prepare(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
                 diagnostics.append(
                     {
                         "code": "memory_unavailable",
-                        "message": "Layered memory projection failed; execution continues without memory context.",
+                        "message": "Layered Memory projection failed; execution continues without memory context.",
                     }
                 )
                 memory_projection = None
             else:
                 data = memory_projection.get("data") or {}
                 if data.get("raw_content_included"):
-                    raise OrchestrationError(
-                        "memory_contract_breach",
-                        "memory project unexpectedly included raw content",
-                    )
+                    raise OrchestrationError("memory_contract_breach", "memory project unexpectedly included raw content")
                 if profile != "personal_full_control":
                     forbidden = [
                         item.get("memory_id")
@@ -465,10 +451,7 @@ def prepare(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
                         if item.get("scope_class") not in SAFE_NON_PERSONAL_SCOPES
                     ]
                     if forbidden:
-                        raise OrchestrationError(
-                            "memory_scope_leak",
-                            f"non-personal memory projection leaked forbidden scope: {forbidden}",
-                        )
+                        raise OrchestrationError("memory_scope_leak", "non-personal memory projection leaked forbidden scope")
 
     ix_result = None
     ix_request = _dict(request.get("code_intelligence", {}), "code_intelligence")
@@ -493,17 +476,11 @@ def prepare(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
                 diagnostics.append(
                     {
                         "code": "ix_low_confidence",
-                        "message": "Ix result is low-confidence and may only narrow navigation scope.",
+                        "message": "Ix is low-confidence and may narrow navigation only.",
                     }
                 )
 
-    source_ready, source_projection, source_diags = _source_verification(
-        workspace,
-        profile,
-        work_kind,
-        request,
-    )
-    diagnostics.extend(source_diags)
+    source_ready, source_projection = _source_verification(workspace, profile, work_kind, request)
     if not source_ready:
         return _envelope(
             "prepare",
@@ -560,10 +537,9 @@ def finalize(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
 
     completed_at = _text(result.get("completed_at"), "slice_result.completed_at")
     evidence_id = _text(result.get("evidence_id"), "slice_result.evidence_id")
-    evidence_file = _text(result.get("evidence_file"), "slice_result.evidence_file")
     evidence_path = _path_under_workspace(
         workspace,
-        evidence_file,
+        _text(result.get("evidence_file"), "slice_result.evidence_file"),
         "slice_result.evidence_file",
         require_file=True,
     )
@@ -574,17 +550,10 @@ def finalize(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
         )
     )
     if profile != "personal_full_control" and scope not in SAFE_NON_PERSONAL_SCOPES:
-        raise OrchestrationError(
-            "evidence_scope_forbidden",
-            f"{profile} may finalize only safe evidence scopes",
-        )
+        raise OrchestrationError("evidence_scope_forbidden", f"{profile} may finalize only safe evidence scopes")
 
     previous = _dict(state.get("previous_slice", {}), "execution_state.previous_slice")
-    if previous.get("quota_spent") is True and previous.get("slice_id") != slice_id:
-        raise OrchestrationError(
-            "quota_accounting_conflict",
-            "previous_slice is already quota-accounted for a different slice",
-        )
+    state_matches_ticket = _digest(state) == ticket.get("state_fingerprint")
 
     capture_request = {
         "operation": "capture_raw",
@@ -618,24 +587,26 @@ def finalize(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
     atom = _dict(result.get("atom", {}), "slice_result.atom")
     if bool(atom.get("enabled", False)):
         atom_id = _text(atom.get("memory_id"), "slice_result.atom.memory_id")
-        atom_request = {
-            "operation": "create_atom",
-            "memory_id": atom_id,
-            "statement": _text(atom.get("statement"), "slice_result.atom.statement"),
-            "raw_refs": [evidence_id],
-            "confidence": str(atom.get("confidence", "verified")),
-            "execution_profile": profile,
-            "scope_class": scope,
-            "created_at": completed_at,
-            "applicability": list(atom.get("applicability", [])) if isinstance(atom.get("applicability", []), list) else [],
-            "limits": list(atom.get("limits", [])) if isinstance(atom.get("limits", []), list) else [],
-            "provenance": [slice_id, evidence_id],
-            "repository": result.get("repository"),
-            "unity_version": result.get("unity_version"),
-            "platform": result.get("platform"),
-            "tags": list(result.get("tags", [])) if isinstance(result.get("tags", []), list) else [],
-        }
-        atom_projection = _memory(workspace, atom_request)
+        atom_projection = _memory(
+            workspace,
+            {
+                "operation": "create_atom",
+                "memory_id": atom_id,
+                "statement": _text(atom.get("statement"), "slice_result.atom.statement"),
+                "raw_refs": [evidence_id],
+                "confidence": str(atom.get("confidence", "verified")),
+                "execution_profile": profile,
+                "scope_class": scope,
+                "created_at": completed_at,
+                "applicability": list(atom.get("applicability", [])) if isinstance(atom.get("applicability", []), list) else [],
+                "limits": list(atom.get("limits", [])) if isinstance(atom.get("limits", []), list) else [],
+                "provenance": [slice_id, evidence_id],
+                "repository": result.get("repository"),
+                "unity_version": result.get("unity_version"),
+                "platform": result.get("platform"),
+                "tags": list(result.get("tags", [])) if isinstance(result.get("tags", []), list) else [],
+            },
+        )
         if atom_projection.get("status") != "ok":
             return _envelope(
                 "finalize",
@@ -670,6 +641,38 @@ def finalize(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
             ],
         )
 
+    if previous.get("quota_spent") is True and previous.get("slice_id") != slice_id:
+        return _envelope(
+            "finalize",
+            "blocked",
+            ready=False,
+            evidence=capture,
+            atom=atom_projection,
+            required_next_action="reprepare_from_authoritative_state",
+            diagnostics=[
+                {
+                    "code": "quota_accounting_conflict",
+                    "message": "Authoritative state is already quota-accounted for a different slice; evidence was preserved.",
+                }
+            ],
+        )
+
+    if not state_matches_ticket:
+        return _envelope(
+            "finalize",
+            "blocked",
+            ready=False,
+            evidence=capture,
+            atom=atom_projection,
+            required_next_action="reprepare_from_authoritative_state",
+            diagnostics=[
+                {
+                    "code": "stale_execution_state",
+                    "message": "Authoritative state changed after ticket issuance; evidence was preserved but quota/state accounting is blocked.",
+                }
+            ],
+        )
+
     spend_state = copy.deepcopy(state)
     spend_previous = dict(spend_state.get("previous_slice") or {})
     spend_previous.update(
@@ -677,19 +680,13 @@ def finalize(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
             "slice_id": slice_id,
             "writeback_complete": True,
             "validated": True,
-            "evidence_refs": list(
-                dict.fromkeys([*list(spend_previous.get("evidence_refs", [])), evidence_id])
-            ),
+            "evidence_refs": list(dict.fromkeys([*list(spend_previous.get("evidence_refs", [])), evidence_id])),
         }
     )
     spend_state["previous_slice"] = spend_previous
     slots = int(result.get("slots", 1))
     if slots <= 0:
-        raise OrchestrationError(
-            "invalid_slots",
-            "slice_result.slots must be greater than zero",
-            "invalid_request",
-        )
+        raise OrchestrationError("invalid_slots", "slice_result.slots must be greater than zero", "invalid_request")
 
     spend = _continuation("spend", spend_state, slots=slots)
     if spend.get("status") != "ok":
@@ -721,8 +718,12 @@ def finalize(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
             "quota_spend_id": spend_id,
             "orchestrated": True,
         },
-        "quota": {
-            "spent_slots": (spend.get("quota") or {}).get("spent_slots"),
+        "quota": {"spent_slots": (spend.get("quota") or {}).get("spent_slots")},
+        "orchestration": {
+            "active_ticket_id": None,
+            "last_quota_spend_id": spend_id,
+            "required_next_action": "write_finalization_to_authoritative_state",
+            "last_status": "ok",
         },
         "memory_projection": {
             "memory_ids": memory_records,
@@ -792,21 +793,12 @@ def execute(workspace: Path, operation: str, request: dict[str, Any]) -> dict[st
         return prepare(workspace, request)
     if operation == "finalize":
         return finalize(workspace, request)
-    raise OrchestrationError(
-        "unsupported_operation",
-        "operation must be prepare or finalize",
-        "invalid_request",
-    )
+    raise OrchestrationError("unsupported_operation", "operation must be prepare or finalize", "invalid_request")
 
 
 def _read_input(value: str) -> dict[str, Any]:
-    text = (
-        sys.stdin.read()
-        if value == "-"
-        else Path(value).expanduser().resolve().read_text(encoding="utf-8")
-    )
-    payload = json.loads(text)
-    return _dict(payload, "input")
+    text = sys.stdin.read() if value == "-" else Path(value).expanduser().resolve().read_text(encoding="utf-8")
+    return _dict(json.loads(text), "input")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -815,11 +807,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--workspace-root", default=".")
     parser.add_argument("--input", default="-", help="Input JSON path or '-' for stdin.")
     args = parser.parse_args(argv)
-
     try:
-        workspace = _workspace(args.workspace_root)
-        request = _read_input(args.input)
-        result = execute(workspace, args.operation, request)
+        result = execute(_workspace(args.workspace_root), args.operation, _read_input(args.input))
     except (FileNotFoundError, json.JSONDecodeError) as exc:
         result = _envelope(
             args.operation,
@@ -834,7 +823,6 @@ def main(argv: list[str] | None = None) -> int:
             ready=False,
             diagnostics=[{"code": exc.code, "message": exc.message}],
         )
-
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result["status"] == "ok" else 4 if result["status"] == "invalid_request" else 3
 
