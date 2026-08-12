@@ -1,4 +1,4 @@
-schema_version: "1.0"
+schema_version: "1.1"
 inspired_by: huangruiteng/loopx
 authority: Unity-Graph-Engineering native contract
 external_runtime_required: false
@@ -7,6 +7,7 @@ purpose:
   - decide whether another bounded graph slice may run
   - preserve typed next work across turns
   - separate scheduling quota from permission and budget
+  - expose deterministic claim, lease, and quota-spend projections
 
 terms:
   gate: permission_or_safety_boundary
@@ -20,30 +21,61 @@ invariants:
   continuation_requires_valid_writeback: true
   one_writer_per_artifact: true
   unbounded_autonomy_forbidden: true
+  controller_does_not_own_state_authority: true
+  quota_spend_requires_validated_writeback: true
+  quota_spend_requires_evidence: true
 
 state_order:
   - health_gate
   - human_gate
   - evidence_wait
   - focus_wait
+  - budget_guard
   - compute_quota
   - bounded_work
 
 continuation_decisions:
   run:
+    should_run: true
     requires:
       - no_blocking_gate
-      - todo_available
+      - advancement_todo_available_or_truncated_projection
       - budget_remaining
       - quota_eligible
   ask_human:
+    should_run: false
     terminal_for_automatic_continuation: true
   wait:
+    should_run: false
     terminal_for_current_slice: true
   blocked:
+    should_run: false
     terminal_for_current_slice: true
   complete:
+    should_run: false
     terminal_for_goal: true
+
+machine_controller:
+  implementation: Tools/ContinuationController/continuation_controller.py
+  runtime_dependencies: python_stdlib_only
+  source_of_truth: false
+  input: compact_json_projection
+  output: normalized_json_decision
+  operations:
+    evaluate:
+      side_effects: none
+      purpose: should_run_decision
+    claim:
+      side_effects: none
+      purpose: claim_and_lease_projection
+    spend:
+      side_effects: none
+      purpose: validated_quota_spend_projection
+  persistence_owner:
+    - STATE/current.yaml
+    - STATE/events.jsonl
+    - Evidence/
+  caller_must_persist_projection: true
 
 bounded_slice:
   unit: one_node_or_one_verification_slice
@@ -54,21 +86,62 @@ bounded_slice:
     - budget_delta
   failed_slice_must_write_blocker: true
 
+work_lane:
+  task_classes:
+    - advancement_task
+    - continuous_monitor
+  advancement_task:
+    may_trigger_run: true
+  continuous_monitor:
+    unchanged_poll_should_run: false
+    effective_action: monitor_quiet_skip
+  truncated_todo_projection:
+    conservative_assumption: hidden_open_todo_is_advancement
+    effective_action: materialize_advancement_todo_or_blocker
+    normal_delivery_allowed: false
+
 quota:
   enabled_for_graph_loop: true
   default_compute_share: 1.0
+  default_window_hours: 24
+  default_slot_minutes: 1
   minimum: 0.0
   maximum: 1.0
+  allowed_slots_formula: floor(window_hours * 60 / slot_minutes * compute_share)
   spend_only_after_validated_slice: true
+  spend_requires_evidence_refs: true
   quota_zero_means_automatic_continuation_paused: true
   quota_zero_does_not_delete_goal: true
   exact_token_accounting_required: false
+  explicit_allowed_slots_override_supported: true
 
 claims_and_leases:
   claim_required_when_multiple_workers_can_select_same_todo: true
+  single_worker_claim_required: false
   lease_is_execution_local: true
+  default_lease_seconds: 900
   lease_must_not_override_human_gate: true
   expired_lease_returns_todo_to_unclaimed: true
+  active_other_worker_lease_skips_candidate: true
+
+capability_preflight:
+  enabled: true
+  default_available:
+    - shell
+    - filesystem_read
+    - filesystem_write
+  per_todo_required_capabilities: true
+  missing_local_capability:
+    decision: blocked
+    effective_action: capability_repair
+    normal_delivery_allowed: false
+  owner_held_capabilities:
+    - credentials
+    - production_access
+    - human_review
+  missing_owner_held_capability:
+    decision: ask_human
+    effective_action: request_required_capability
 
 writeback:
   execution_state_source: STATE/current.yaml
@@ -76,11 +149,15 @@ writeback:
   evidence_source: Evidence/
   transcript_is_not_state: true
   required_before_next_slice: true
+  quota_spend_after_writeback_only: true
 
 safe_fallback:
-  provider_unavailable:
-    - continue_with_native_state
+  external_loopx_unavailable:
+    - continue_with_native_controller
     - keep_quota_at_policy_default
   evidence_missing:
     - do_not_spend_quota
     - mark_slice_unverified
+  no_executable_todo:
+    - do_not_run_arbitrary_work
+    - materialize_todo_or_blocker
