@@ -1,0 +1,63 @@
+{
+  "execution_profile": "personal_full_control",
+  "work_kind": "mutation",
+  "execution_state": {
+    "run_id": "run-renderer-fix-001",
+    "execution_mode": "graph_loop",
+    "execution_profile": "personal_full_control",
+    "goal_id": "renderer-fix",
+    "goal_complete": false,
+    "health": { "ok": true },
+    "human_gate": { "required": false, "satisfied": true },
+    "evidence_wait": { "waiting": false },
+    "focus_wait": { "waiting": false },
+    "budget": { "remaining": true },
+    "quota": {
+      "compute_share": 1.0,
+      "allowed_slots": 10,
+      "spent_slots": 2
+    },
+    "worker": {
+      "id": "graphics-worker",
+      "multiple_workers": false
+    },
+    "available_capabilities": [
+      "shell",
+      "filesystem_read",
+      "filesystem_write"
+    ],
+    "todos": [
+      {
+        "id": "inspect-renderer-dependency",
+        "status": "unclaimed",
+        "task_class": "advancement_task",
+        "required_capabilities": ["filesystem_read", "filesystem_write"]
+      }
+    ],
+    "todos_truncated": false
+  },
+  "memory": {
+    "enabled": true,
+    "query": "renderer dependency previous failure",
+    "max_items": 6,
+    "max_chars": 4000,
+    "repository": "DarumaPPAP/FakeUnity7",
+    "unity_version": "6000.7.0a2",
+    "platform": "StandaloneWindows64"
+  },
+  "code_intelligence": {
+    "enabled": true,
+    "operation": "impact",
+    "target": "RenderingFlowPipelineView"
+  },
+  "source_verification": {
+    "completed": true,
+    "scope_class": "project_internal",
+    "paths": [
+      "Assets/Settings/RendererFeature/RenderingFlowGraph/Editor/RenderingFlowPipelineView.cs"
+    ],
+    "evidence_refs": [
+      "source-read-rendering-flow-pipeline-view-001"
+    ]
+  }
+}
