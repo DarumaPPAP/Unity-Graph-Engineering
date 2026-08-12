@@ -1,0 +1,52 @@
+{
+  "execution_profile": "team_safe_import",
+  "work_kind": "portable_import",
+  "execution_state": {
+    "run_id": "run-portable-import-001",
+    "execution_mode": "graph_loop",
+    "execution_profile": "team_safe_import",
+    "goal_id": "import-portable-render-feature",
+    "goal_complete": false,
+    "health": { "ok": true },
+    "human_gate": { "required": false, "satisfied": true },
+    "evidence_wait": { "waiting": false },
+    "focus_wait": { "waiting": false },
+    "budget": { "remaining": true },
+    "quota": {
+      "compute_share": 1.0,
+      "allowed_slots": 4,
+      "spent_slots": 0
+    },
+    "worker": {
+      "id": "portable-import-worker",
+      "multiple_workers": false
+    },
+    "available_capabilities": ["filesystem_write"],
+    "todos": [
+      {
+        "id": "import-verified-portable-package",
+        "status": "unclaimed",
+        "task_class": "advancement_task",
+        "required_capabilities": ["filesystem_write"]
+      }
+    ],
+    "todos_truncated": false
+  },
+  "memory": {
+    "enabled": true,
+    "query": "portable render feature import constraints",
+    "max_items": 4,
+    "max_chars": 3000
+  },
+  "code_intelligence": {
+    "enabled": false
+  },
+  "source_verification": {
+    "completed": true,
+    "scope_class": "portable_artifact",
+    "paths": [],
+    "evidence_refs": [
+      "portable-package-verification-001"
+    ]
+  }
+}
