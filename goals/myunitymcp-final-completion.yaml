@@ -1,0 +1,91 @@
+schema_version: "1.0"
+id: myunitymcp-final-completion
+title: MyUnityMCP Final Completion
+execution_mode: graph_loop
+execution_profile: personal_full_control
+status: ready_for_codex_execution
+
+source_of_truth:
+  graph_engineering:
+    repository: DarumaPPAP/Unity-Graph-Engineering
+    branch: feature/myunitymcp-final-completion
+  product:
+    repository: DarumaPPAP/MyUnityMCP
+    work_branch: graph/myunitymcp-final-completion
+    baseline_branch: delivery/stage2-8-integration
+    baseline_commit: 4bbe412e64126a22a94b255ef2001feb215c7b14
+    production_branch: main
+    production_baseline_commit: c0c37669a1ee187022ff0664dfbf3f6d7c3da7fa
+  validation_project:
+    kind: local_unity_project
+    logical_name: CG
+    path_resolution: discover_from_local_workspace_at_runtime
+    github_remote_required: false
+    remote_push: prohibited
+
+current_scope:
+  production_tools: 45
+  candidate_tools: 32
+  combined_target_tools: 77
+  included_candidate_domains:
+    unity_profiler_mcp: 8
+    unity_addressables_mcp: 4
+    unity_ui_mcp: 5
+    unity_animation_mcp: 5
+    unity_audio_mcp: 5
+    unity_cinematic_mcp: 5
+  excluded:
+    - player_build_domain
+    - addressables_content_build
+    - movie_creator_runtime
+    - live_creator_runtime
+
+primary_goal: >-
+  Reconcile every currently valid MyUnityMCP roadmap item, implement all remaining
+  in-scope work on graph/myunitymcp-final-completion, validate it in the local CG
+  Unity project, repair failures with bounded loops, collect evidence, and stop at
+  PROMOTION_READY without merging PR #39 or main.
+
+acceptance:
+  - current valid roadmap is reconstructed from repository sources before implementation
+  - MyUnityMCP compiles in CG with zero compile errors
+  - exact MCP tool discovery is 77 with zero duplicates
+  - Build domain is absent
+  - Addressables exposes exactly inspect, prepare_entry, apply_entry, get_support_matrix
+  - read-only smoke passes for all six candidate domains, allowing expected UNSUPPORTED when Addressables package is absent
+  - stale revision precedence and MCP failure envelope pass
+  - missing approval, wrong token, expired approval, and plan reuse are safely rejected
+  - Profiler capture lifecycle is validated without claiming target-device performance
+  - UI, Animation, Audio, and Cinematic mutation E2E stay inside their declared scopes
+  - Addressables entry management boundary is validated when available and does not install/create package/settings/groups automatically
+  - Agent candidate-domain routing and delegated failure propagation do not false-success
+  - timeout, cancel, reload, and cross-domain regressions are evaluated
+  - Production 45-tool behavior is regression-checked
+  - manifests, catalogs, docs, tests, and validation evidence reflect the final candidate
+  - no existing CG production asset is modified outside the isolated validation area except explicitly authorized transient package binding
+  - verdict is PROMOTION_READY or a concrete BLOCKED report with evidence
+
+human_gates:
+  required:
+    - merge graph/myunitymcp-final-completion into delivery/stage2-8-integration
+    - mark PR #39 ready for review
+    - merge PR #39 to main
+    - delete existing CG production assets
+    - persistent CG ProjectSettings changes
+  already_authorized_for_this_goal:
+    - use local CG as the integration validation project
+    - create and modify Assets/__MyUnityMcpValidation/**
+    - perform transient local MyUnityMCP package binding in CG when required for validation, with before/after evidence and restoration plan
+
+stop_conditions:
+  - same failure signature occurs twice in one node
+  - compile error cannot be repaired within three attempts
+  - unexpected mutation outside declared MyUnityMCP work branch or CG validation scope
+  - unexpected Save, Bake, Player Build, or Addressables Content Build
+  - requirement would change current scope or reintroduce an excluded build surface
+  - evidence cannot distinguish PASS from unavailable
+
+promotion_boundary:
+  automatic_merge: false
+  final_automatic_state: PROMOTION_READY
+  next_human_action: review_and_promote_to_delivery_branch

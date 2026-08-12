@@ -1,0 +1,180 @@
+schema_version: "1.0"
+id: myunitymcp-final-completion
+name: MyUnityMCP Final Completion Workflow
+goal: goals/myunitymcp-final-completion.yaml
+policy: policies/myunitymcp-validation.yaml
+state_template: templates/myunitymcp-validation-state.yaml
+execution_mode: graph_loop
+execution_profile: personal_full_control
+
+budgets:
+  max_parallel_workers: 3
+  max_attempts_per_mutating_node: 3
+  max_identical_failures: 2
+  one_writer_per_artifact: true
+
+nodes:
+  - id: freeze-authority
+    role: goal-owner
+    mode: read_only
+    purpose: Verify repository identities, branches, baseline SHAs, PR #39 state, excluded build surfaces, and local CG availability.
+    outputs: [authority-evidence]
+
+  - id: reconcile-roadmap
+    role: repository-researcher
+    mode: read_only
+    depends_on: [freeze-authority]
+    purpose: Reconstruct the currently valid roadmap from MyUnityMCP, UnityAgent, Unity-Graph-Engineering, PR #39, Specs, Catalog, Development/GraphEngineering, Tests, and Documentation; discard superseded 85/79-tool plans and excluded build work.
+    outputs: [reconciled-roadmap, unresolved-bindings]
+
+  - id: implement-roadmap-gaps
+    role: implementation-worker
+    depends_on: [reconcile-roadmap]
+    purpose: Implement only genuine remaining in-scope source/contract/test gaps on graph/myunitymcp-final-completion.
+    loop:
+      max_attempts: 3
+      stop_on: [same_failure_twice, scope_change_required, excluded_build_surface_required]
+    outputs: [source-diff, maker-evidence]
+
+  - id: static-contract-verification
+    role: independent-verifier
+    mode: checker_only
+    depends_on: [implement-roadmap-gaps]
+    purpose: Verify source tool count, manifests, catalogs, forbidden build declarations, test contracts, assembly/meta integrity, and no unexpected runtime domain.
+    outputs: [static-contract-evidence]
+
+  - id: bind-local-cg
+    role: integration-worker
+    depends_on: [static-contract-verification]
+    purpose: Resolve the local CG Unity project directly from the Codex workspace and bind the MyUnityMCP work branch/local package for validation without requiring a CG GitHub branch.
+    constraints:
+      - do_not_push_cg_remote
+      - preserve_existing_cg_assets
+      - validation_assets_only_under_Assets/__MyUnityMcpValidation
+      - record_manifest_before_if_transient_package_binding_is_needed
+    outputs: [cg-binding-evidence, cg-rollback-plan]
+
+  - id: compile-and-discover-77
+    role: independent-unity-verifier
+    depends_on: [bind-local-cg]
+    purpose: Compile in CG and verify exact 77-tool discovery with zero duplicates and the expected per-domain composition.
+    loop:
+      repair_owner: implementation-worker
+      max_attempts: 3
+      stop_on: [same_failure_twice, unexpected_cg_mutation]
+    outputs: [compile-evidence, discovery-evidence]
+
+  - id: agent-capability-catalog
+    role: independent-unity-verifier
+    depends_on: [compile-and-discover-77]
+    purpose: Verify Agent capabilities contain six candidate domains, no Build domain, Addressables exactly four tools, directUnityMutation=false, and candidate routing remains explicitly gated.
+    outputs: [agent-capability-evidence]
+
+  - id: readonly-domain-smoke
+    role: independent-unity-verifier
+    depends_on: [agent-capability-catalog]
+    purpose: Run read-only smoke across Graphics regression entry plus Profiler, Addressables, UI, Animation, Audio, and Cinematic without mutation/save/bake/build.
+    outputs: [readonly-smoke-evidence]
+
+  - id: shared-safety-contract
+    role: independent-unity-verifier
+    depends_on: [readonly-domain-smoke]
+    purpose: Validate stale revision precedence, bridge failure envelope, missing approval, wrong token, expired approval, one-time plan consumption, and no mutation on rejection.
+    outputs: [safety-evidence]
+
+  - id: create-isolated-validation-fixtures
+    role: validation-fixture-writer
+    depends_on: [shared-safety-contract]
+    purpose: Create only the minimal CG fixtures under Assets/__MyUnityMcpValidation for UI, Animation, Audio, and Cinematic E2E.
+    outputs: [fixture-inventory]
+
+  - id: profiler-e2e
+    role: independent-unity-verifier
+    depends_on: [create-isolated-validation-fixtures]
+    purpose: Validate Profiler capture prepare/start/status/cancel-or-complete/summarize/compare behavior and label evidence as Editor-only.
+    outputs: [profiler-evidence]
+
+  - id: addressables-entry-boundary
+    role: independent-unity-verifier
+    depends_on: [create-isolated-validation-fixtures]
+    purpose: Validate the four-tool Addressables surface; if package is absent, accept explicit UNSUPPORTED and prohibit installation. If present, validate existing-entry mutation boundaries without content build.
+    outputs: [addressables-evidence]
+
+  - id: ui-e2e
+    role: independent-unity-verifier
+    depends_on: [create-isolated-validation-fixtures]
+    purpose: Inspect/prepare/apply/validate a validation RectTransform and prove only approved properties changed.
+    outputs: [ui-evidence]
+
+  - id: animation-e2e
+    role: independent-unity-verifier
+    depends_on: [create-isolated-validation-fixtures]
+    purpose: Add a validation AnimatorController parameter and prove states/transitions/clips were not rewritten.
+    outputs: [animation-evidence]
+
+  - id: audio-e2e
+    role: independent-unity-verifier
+    depends_on: [create-isolated-validation-fixtures]
+    purpose: Modify only approved AudioSource scalar/boolean properties and prove AudioClip/Mixer assets were not replaced/generated.
+    outputs: [audio-evidence]
+
+  - id: cinematic-e2e
+    role: independent-unity-verifier
+    depends_on: [create-isolated-validation-fixtures]
+    purpose: Modify only approved PlayableDirector settings and prove playable asset/bindings/tracks/clips remain unchanged.
+    outputs: [cinematic-evidence]
+
+  - id: agent-delegation-e2e
+    role: independent-verifier
+    depends_on: [profiler-e2e, addressables-entry-boundary, ui-e2e, animation-e2e, audio-e2e, cinematic-e2e]
+    purpose: Validate Agent routing to each candidate domain plus delegated failure propagation and no false-success.
+    outputs: [agent-delegation-evidence]
+
+  - id: resilience-regression
+    role: independent-verifier
+    depends_on: [agent-delegation-e2e]
+    purpose: Evaluate timeout, cancel, domain reload/reconnect behavior that remains relevant after Build removal, without Player Build or Addressables Content Build.
+    outputs: [resilience-evidence]
+
+  - id: cross-domain-workflow
+    role: independent-verifier
+    depends_on: [resilience-regression]
+    purpose: Execute a bounded cross-domain read/plan/approved-mutation workflow using validation fixtures and verify revision/evidence consistency.
+    outputs: [cross-domain-evidence]
+
+  - id: production-45-regression
+    role: independent-verifier
+    depends_on: [cross-domain-workflow]
+    purpose: Recheck critical Production Graphics/Agent/WorldCreator contracts so the 32-tool promotion does not regress the 45-tool baseline.
+    outputs: [production-regression-evidence]
+
+  - id: finalize-product-contracts
+    role: documentation-owner
+    depends_on: [production-45-regression]
+    purpose: Update MyUnityMCP manifest/catalog/docs/tests/validation evidence to the actually verified final state; never turn unavailable CI into PASS.
+    outputs: [final-contract-diff, final-validation-evidence]
+
+  - id: cleanup-cg-validation
+    role: integration-worker
+    depends_on: [finalize-product-contracts]
+    purpose: Confirm existing CG assets were untouched, preserve or remove isolated fixtures according to local validation policy, and restore transient package binding when appropriate.
+    outputs: [cg-cleanup-evidence]
+
+  - id: promotion-readiness
+    role: independent-verifier
+    mode: checker_only
+    depends_on: [cleanup-cg-validation]
+    purpose: Aggregate all evidence and emit PROMOTION_READY only when every mandatory gate is PASS or an explicitly allowed UNSUPPORTED condition.
+    verdicts: [PROMOTION_READY, BLOCKED]
+    outputs: [promotion-readiness-report]
+
+  - id: human-promotion-gate
+    role: human
+    depends_on: [promotion-readiness]
+    condition: verdict == PROMOTION_READY
+    purpose: Stop before merging graph branch into delivery/stage2-8-integration, changing PR #39 readiness, or merging main.
+
+completion:
+  - promotion-readiness verdict is PROMOTION_READY
+  - human-promotion-gate is waiting_for_user
+  - no automatic merge has occurred

@@ -1,0 +1,73 @@
+schema_version: "1.0"
+goal_id: myunitymcp-final-completion
+status: not_started
+execution_mode: graph_loop
+execution_profile: personal_full_control
+
+repositories:
+  graph_engineering:
+    branch: feature/myunitymcp-final-completion
+    head: unresolved_at_runtime
+  myunitymcp:
+    branch: graph/myunitymcp-final-completion
+    base: 4bbe412e64126a22a94b255ef2001feb215c7b14
+    head: unresolved_at_runtime
+  cg:
+    kind: local_workspace
+    path: unresolved_at_runtime
+    remote_push: prohibited
+
+current_node: freeze-authority
+attempt: 0
+health: ready
+human_gate: open_for_execution
+
+tool_surface:
+  expected: 77
+  observed: null
+  duplicates: null
+  composition: {}
+
+quality_gates:
+  authority: not_run
+  roadmap_reconciliation: not_run
+  static_contracts: not_run
+  cg_binding: not_run
+  compile: not_run
+  discovery_77: not_run
+  agent_capabilities: not_run
+  readonly_smoke: not_run
+  shared_safety: not_run
+  profiler: not_run
+  addressables: not_run
+  ui: not_run
+  animation: not_run
+  audio: not_run
+  cinematic: not_run
+  agent_delegation: not_run
+  resilience: not_run
+  cross_domain: not_run
+  production_45_regression: not_run
+  final_contracts: not_run
+  cg_cleanup: not_run
+  promotion_readiness: not_run
+
+evidence_refs: []
+raw_failures: []
+repairs: []
+mutated_product_artifacts: []
+cg_validation_artifacts: []
+cg_existing_artifacts_modified: []
+transient_package_binding:
+  used: false
+  before_ref: null
+  after_ref: null
+  restored: false
+
+excluded_surfaces_observed:
+  player_build: false
+  addressables_content_build: false
+
+verdict: IN_PROGRESS
+stop_reason: null
+next_action: run_current_node

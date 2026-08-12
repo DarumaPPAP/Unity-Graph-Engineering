@@ -1,0 +1,92 @@
+schema_version: "1.0"
+id: myunitymcp-validation
+applies_to: goals/myunitymcp-final-completion.yaml
+
+execution:
+  mode: graph_loop
+  profile: personal_full_control
+  source_mutation_repository: DarumaPPAP/MyUnityMCP
+  source_mutation_branch: graph/myunitymcp-final-completion
+  merge_prohibited: true
+
+cg_local_project:
+  logical_name: CG
+  access: direct_local_workspace
+  path: runtime_discovery_required
+  github_branch_required: false
+  remote_push: prohibited
+  existing_assets_default: read_only
+  validation_root: Assets/__MyUnityMcpValidation
+  allowed_mutation:
+    - Assets/__MyUnityMcpValidation/**
+    - transient Packages/manifest.json binding only when needed to load the local MyUnityMCP candidate
+  transient_manifest_rules:
+    - capture exact before content
+    - bind only MyUnityMCP candidate/local checkout
+    - do not add unrelated packages
+    - do not change ProjectSettings
+    - provide deterministic rollback
+    - restore when validation no longer requires the binding
+
+product_surface:
+  expected_total_tools: 77
+  composition:
+    graphics: 32
+    agent: 10
+    world_creator: 3
+    profiler: 8
+    addressables: 4
+    ui: 5
+    animation: 5
+    audio: 5
+    cinematic: 5
+  forbidden_tools:
+    - build.*
+    - addressables.prepare_content_build
+    - addressables.build_content
+  forbidden_runtime_calls:
+    - BuildPipeline.BuildPlayer
+    - AddressableAssetSettings.BuildPlayerContent
+
+addressables:
+  installation: prohibited
+  settings_auto_creation: prohibited
+  group_auto_creation: prohibited
+  content_build: prohibited
+  package_absent_expected_result: UNSUPPORTED
+
+mutation_safety:
+  expected_revision_required: true
+  prepare_must_be_read_only: true
+  one_time_plan_required: true
+  approval_required_for_apply: true
+  automatic_save: prohibited
+  automatic_full_bake: prohibited
+  generic_serialized_property_mutation: prohibited
+  force_or_bypass: prohibited
+  direct_agent_unity_mutation: prohibited
+
+validation_evidence:
+  pass_requires_observation: true
+  unavailable_is_not_pass: true
+  historical_85_or_79_surface_is_not_current_pass: true
+  editor_profiler_is_not_target_device_evidence: true
+  github_actions_steps_null: not_verified
+  retain_raw_failure_response: true
+  record_revision_before_after: true
+  record_scene_asset_change: true
+
+repair_loop:
+  max_attempts_per_node: 3
+  identical_failure_limit: 2
+  repair_strategy: minimal_root_cause_fix
+  scope_expansion: prohibited_without_human_gate
+
+human_gate:
+  required_before:
+    - merge_into_delivery_stage2_8_integration
+    - mark_pr_39_ready
+    - merge_pr_39_to_main
+    - delete_existing_cg_asset
+    - persistent_projectsettings_change
+    - reintroduce_build_surface
