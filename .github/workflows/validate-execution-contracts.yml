@@ -10,6 +10,7 @@ on:
       - "Tools/ExecutionPolicyValidator/**"
       - "Tools/IxAdapter/**"
       - "Tools/ContinuationController/**"
+      - "Tools/LayeredMemoryController/**"
       - "Tests/**"
       - "tests/**"
       - "workflow-templates/**"
@@ -25,6 +26,7 @@ on:
       - "Tools/ExecutionPolicyValidator/**"
       - "Tools/IxAdapter/**"
       - "Tools/ContinuationController/**"
+      - "Tools/LayeredMemoryController/**"
       - "Tests/**"
       - "tests/**"
       - "workflow-templates/**"
@@ -65,7 +67,7 @@ jobs:
       - name: Validate execution policy coherence
         run: python Tools/ExecutionPolicyValidator/validate_execution_policies.py
 
-      - name: Test external provider and continuation contracts
+      - name: Test external intelligence and control-plane contracts
         run: python -m unittest discover -s Tests/ExternalProviders -p "test_*.py" -v
 
       - name: Assert required contract files
@@ -84,5 +86,7 @@ jobs:
           test -f Tests/ExternalProviders/cases.yaml
           test -f Tests/ExternalProviders/test_ix_adapter.py
           test -f Tests/ExternalProviders/test_continuation_controller.py
+          test -f Tests/ExternalProviders/test_layered_memory_controller.py
           test -f Tools/IxAdapter/ix_adapter.py
           test -f Tools/ContinuationController/continuation_controller.py
+          test -f Tools/LayeredMemoryController/layered_memory_controller.py
