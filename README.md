@@ -27,35 +27,13 @@ Unity固有のC#、URP、RenderGraph、Shader、Variant、Performance、Visual D
 
 ### Prompt Engineering
 
-モード指定がない場合の既定です。
-
-対象:
-
-- 説明、レビュー
-- 単一ファイルまたは局所修正
-- 原因確定済みエラー
-- 明確な小規模実装
-- Project非参照のPortable設計
-
-Task Graph、複数Worker、永続Checkpointを作らず、一つのTask Contract、必要なContext Pack、対象Sourceだけを読みます。
+モード指定がない場合の既定です。説明、単一ファイル修正、原因確定済みエラー、明確な小規模実装、Portable設計をTask Graphなしで処理します。
 
 ### Graph / Loop Engineering
 
-次の場合だけ使用します。
-
-- 複数Subsystem
-- 原因不明、複数仮説
-- Runtime / Visual / Performance反復
-- Platform固有差
-- Migration / Rollback
-- 独立BranchとJoin
-- Separate Verifier
-
-無指定のPrompt Taskから無断で切り替えません。変更理由、利点、追加コスト、Prompt限定継続案を提示し、ユーザー承認を得ます。
+複数Subsystem、複数仮説、Runtime/Visual/Performance反復、Platform差、Migration/Rollback、独立Branch、Separate Verifierが必要な場合だけ使用します。無指定Taskから無断で切り替えません。
 
 ## Execution profiles
-
-Execution Modeとは別に、Projectとの接続形態を管理します。
 
 | Profile | 用途 | Project Context |
 |---|---|---|
@@ -63,46 +41,98 @@ Execution Modeとは別に、Projectとの接続形態を管理します。
 | `personal_full_control` | 個人Projectの直接実装、Unity検証、Git | Optional |
 | `team_safe_import` | 会社Projectへの一方向Staging Import | 禁止 |
 
-### Generic Planning
-
-Unity Version、Render Pipeline、Platform、Goal、Constraints、禁止事項、期待結果の最小手動入力だけで計画します。Project固有Path、Scene、Renderer Data、Layer、ShaderTagは未解決Bindingとして残し、推測しません。
-
-### Personal Full-Control
-
-Project Context GeneratorとUnity Command SurfaceはOptionalな加速装置です。利用不能でもTaskを中止せず、手動要件とSourceから継続します。
-
-### Team Safe Import
-
-Personal Toolとは別製品とし、Project Scanner、Source Export、Screenshot、Hierarchy、Unity Project ID、Git、Issue、Cloud、Environment Variable、組織情報、顧客情報へのアクセス機能を持ちません。禁止情報はReport Schemaにも追加しません。
+`team_safe_import`はProject Scanner、Source Export、Screenshot、Hierarchy、Unity Project ID、Git、Issue、Cloud、Environment Variable、組織情報、顧客情報へアクセスしません。禁止情報はReport Schemaにも追加しません。
 
 ## External intelligence / control plane
 
-Graph / Loop向けに3つの公開Projectから設計を取り込みました。**外部Runtimeは必須依存にしません。**
+Graph / Loop向けにIx、LoopX、TencentDB-Agent-Memoryの有効な設計をNative Control Planeへ統合しています。**外部Runtimeは必須依存にしません。**
 
-| Reference | 統合役割 | 既定 |
+| Reference | Local implementation | 役割 |
 |---|---|---|
-| `ix-infrastructure/Ix` | Optional Code Intelligence / Impact / Trace | `personal_full_control`のみ |
-| `huangruiteng/loopx` | Continuation / Todo / Claim / Lease / Quota思想 | Native Contract |
-| `TencentCloud/TencentDB-Agent-Memory` | Layered Memory / Raw Evidence Offload / Symbolic Projection | Native Contract |
+| `ix-infrastructure/Ix` | `Tools/IxAdapter/ix_adapter.py` | Optional Code Intelligence |
+| `huangruiteng/loopx` | `Tools/ContinuationController/continuation_controller.py` | Continuation / Claim / Lease / Quota |
+| `TencentCloud/TencentDB-Agent-Memory` | `Tools/LayeredMemoryController/layered_memory_controller.py` | Evidence-first Layered Memory |
+| Native integration | `Tools/ExecutionOrchestrator/execution_orchestrator.py` | 全Controllerの安全な順序制御 |
+
+### Canonical Graph runtime flow
+
+通常のGraph / Loop実行は各Controllerを個別に好きな順序で呼ばず、Execution Orchestratorの`prepare → bounded slice → finalize`を通します。
 
 ```text
-Ix structural map ───────┐
-                         ▼
-Goal → Graph → Continuation Decision → Bounded Node Slice
-                         │                    │
-                         │                    ▼
-                         │             Raw Evidence (L0)
-                         │                    ↓
-                         └──────────── Atom → Scenario → Reusable Candidate
+Continuation Gate
+  ├─ Health / Human / Evidence / Focus / Budget / Quota block → STOP
+  ↓
+Claim / Lease durable writeback
+  ↓
+Bounded Memory Projection
+  ↓
+Optional Ix Navigation [personal_full_control only]
+  ↓
+Direct Source Read
+  ↓
+Integrity-bound Execution Ticket
+  ↓
+ONE bounded slice
+  ↓
+L0 Raw Evidence
+  ↓
+Optional L1 Atom
+  ↓
+Quota Spend Projection
+  ↓
+STATE/current.yaml writeback
 ```
 
-- Ixは読むSourceを絞るNavigation Layerであり、Mutation前のSource確認やRuntime Evidenceを置き換えません。
-- LoopX由来のQuotaはPermissionやBudgetと分離し、Human Gateを迂回できません。
-- TencentDB-Agent-Memory由来の圧縮Memoryは必ずRaw Evidenceへdrill down可能にします。
-- MemoryからUnityAgent User Policyへ自動昇格しません。
-- 外部Package/Runtimeは自動Installせず、導入はHuman Gateです。
+重要な境界:
+
+- Continuationが止めた時はIx/Memoryを起動しません。
+- 新規ClaimはStateへ永続化してからProject Navigationへ進みます。
+- IxはNavigationでありDirect Source Readの代替ではありません。
+- MutationのSource ReadにはEvidence Refを要求します。
+- TicketはGoal/Todo/Worker/Profile/State fingerprint/Source verificationへ拘束します。
+- Ticket発行後にStateが変わった場合、得られたEvidenceは保全しますがQuota/State Accountingは拒否します。
+- Evidence保存前にQuotaをSpendしません。
+- 同一Sliceを再FinalizeしてもQuotaを二重消費しません。
+- OrchestratorはSource Mutation、`STATE/current.yaml`、Human Gate、Quota PolicyのAuthorityを持ちません。
 
 詳細: `docs/external-intelligence-control-plane.md`
+
+## Code intelligence
+
+Ixは`personal_full_control`だけで利用できるOptional Navigation Layerです。`impact / trace / callers / callees`等で読む範囲を狭めますが、結果だけでRuntime FactやMutation対象を確定しません。Ix unavailable時は`targeted_source_read`へFallbackします。
+
+## Continuation
+
+Gate / Budget / Quotaを分離します。
+
+```text
+Gate   = 実行してよいか
+Budget = 最大どこまで消費してよいか
+Quota  = eligibleなGoal/Nodeへ次の実行枠を与えるか
+```
+
+Quotaが残っていてもHuman GateやEvidence Waitを越えません。複数WorkerではClaim/Leaseを用い、validated durable writeback + Evidence後だけQuota SpendをProjectionします。
+
+## Layered Memory
+
+```text
+Evidence/raw/        L0 Raw Evidence
+      ↓ raw_refs
+STATE/memory/L1/     Atom
+      ↓ atom_refs
+STATE/memory/L2/     Scenario
+      ↓ scenario_refs
+STATE/memory/L3/     Reusable Candidate
+```
+
+- Raw EvidenceはSHA-256付きで保持し、要約で置換しません。
+- 通常RetrievalにRaw contentを載せません。
+- 既定8件/6000文字、最大20件/12000文字です。
+- `project_internal`は`personal_full_control`だけが読めます。
+- `generic_planning` / `team_safe_import`は`portable_artifact` / `public_reference`だけです。
+- L1→L3は最も厳しい親Scopeを継承し、Scope downgradeを禁止します。
+- Scope無しLegacy Memoryは`project_internal`としてFail Closedします。
+- User Policyへ自動昇格しません。
 
 ## Core files
 
@@ -117,93 +147,31 @@ policies/
 ├─ evidence-admission.yaml
 ├─ external-providers.yaml
 ├─ continuation-control.yaml
-└─ memory-layering.yaml
+├─ memory-layering.yaml
+└─ execution-orchestration.yaml
 
-skills/
-├─ unity-execution-router/
-├─ unity-prompt-execution/
-└─ unity-graph-engineering/
+Tools/
+├─ IxAdapter/
+├─ ContinuationController/
+├─ LayeredMemoryController/
+├─ ExecutionOrchestrator/
+└─ ExecutionPolicyValidator/
 
 schemas/
 ├─ execution-state.schema.yaml
 ├─ evidence.schema.yaml
 ├─ capability-manifest.schema.yaml
 ├─ continuation-state.schema.yaml
-└─ memory-layer.schema.yaml
+├─ memory-layer.schema.yaml
+└─ execution-orchestration.schema.yaml
 
-workflow-templates/
-└─ verified-mutation.yaml
-
-tests/
-└─ contract-routing-cases.yaml
+skills/
+├─ unity-execution-router/
+├─ unity-prompt-execution/
+└─ unity-graph-engineering/
 ```
 
-## Contract routing
-
-```text
-Request
-  ↓
-Execution Profile
-  ↓
-One Primary Task Contract
-  ↓
-One Primary Domain Route
-  ↓
-Zero or One Primary Knowledge
-  ↓
-Conditional Related Knowledge
-```
-
-UnityAgent全体を一括読込しません。Related Knowledgeは依存条件が成立した場合だけ追加します。人間向けHTML Knowledge Productは、設計理由、実験、比較、Visual Reference、Decision履歴が必要な場合だけ参照します。
-
-正本:
-
-- `policies/contract-routing.yaml`
-- `DarumaPPAP/UnityAgent/.ai/context-index.yaml`
-
-## Project Context and capabilities
-
-Project ContextやCapability Manifestは計画の必須条件ではありません。
-
-```text
-Minimal Manual Requirements
-→ Planning
-
-Project Source
-→ Direct Implementation
-
-Unity Tool
-→ Automated Validation
-```
-
-Capability Manifestは存在する場合だけ利用し、`available`、`unavailable`、`unknown`、`prohibited`を区別します。Ix等のExternal Providerも同じManifestでOptional Capabilityとして表現できます。
-
-## Budget, gate, and quota
-
-PromptとGraph / Loopで別のBudget上限を持ちます。
-
-- file reads
-- context expansion hops
-- hypotheses
-- mutation attempts
-- parallel nodes
-- tool calls
-- input / output / cached tokens
-- external side effects
-
-新しいNodeまたはAttempt開始前に残Budgetを確認します。
-
-Graph / LoopではさらにContinuation Quotaを分離します。
-
-```text
-Gate  = 実行してよいか
-Budget = 最大どこまで消費してよいか
-Quota = eligibleなGoal/Nodeへ次の実行枠を与えるか
-```
-
-Quotaが残っていてもHuman GateやEvidence Waitを越えません。
-
-## State, evidence, and memory
+## State, evidence, and accounting
 
 Transcriptを実行Stateとして引き継ぎません。
 
@@ -211,44 +179,17 @@ Transcriptを実行Stateとして引き継ぎません。
 STATE/current.yaml
 STATE/events.jsonl
 STATE/checkpoints/
-Evidence/
+STATE/memory/
+Evidence/raw/
 ```
 
-Execution StateにはExecution Profile、Task Contract ID、Primary Knowledge、未解決Project Binding、Quality Gateに加え、必要な場合のみContinuationとMemory Projectionを保存します。
+`STATE/current.yaml`はExecution Mode/Profile/Task Contractに加え、Goal ID、Health/Human Gate、Budget/Quota、Worker/Todo/Lease、Previous Slice、Orchestration accounting、Memory Projectionを保持できます。
 
-Quality Gateの状態:
-
-- `passed`
-- `failed`
-- `unavailable`
-
-`unavailable`は計画を止めませんが、成功とは扱いません。理由、Claim Scope縮小、残検証を必ず記録します。
-
-Layered Memoryは `L0 Raw Evidence → L1 Atom → L2 Scenario → L3 Reusable Candidate`。上位層だけを残してEvidenceを破棄しません。
-
-正本:
-
-- `schemas/execution-state.schema.yaml`
-- `schemas/continuation-state.schema.yaml`
-- `schemas/memory-layer.schema.yaml`
-- `policies/evidence-admission.yaml`
+OrchestratorはStateを直接編集せず、`required_state_writeback`を返します。Callerが正本へ適用した後に次の`prepare`へ進みます。
 
 ## Team Safe Import evidence
 
-外部へ出せるReportはPackage ID、Version、結果Code、手動手順数などに限定します。
-
-含めないもの:
-
-- Project名とPath
-- Scene名
-- Source Path
-- Screenshot
-- Organization
-- Customer
-- Issue ID
-- Unity Project ID
-
-External ProviderのprobeやProject scanningも行いません。
+外部へ出せるReportはPackage ID、Version、結果Code、手動手順数などに限定します。Project名/Path、Scene、Source Path、Screenshot、Organization、Customer、Issue ID、Unity Project IDを含めません。Ix probeやProject scanningも行いません。
 
 ## Human gates
 
@@ -257,18 +198,14 @@ PR Merge、main直接Push、File削除、Package、ProjectSettings、Render Pipe
 ## Validation
 
 ```bash
+python -m compileall -q Tools Tests
 python Tools/ExecutionPolicyValidator/validate_execution_policies.py
+python -m unittest discover -s Tests/ExternalProviders -p "test_*.py" -v
 ```
 
-Provider / Continuation / Memory regression contract:
-
-```text
-Tests/ExternalProviders/cases.yaml
-```
+CIではさらに全YAML構文とDraft 2020-12 JSON Schema自体の妥当性を検証します。
 
 ## Pilot KPI
-
-初期目標:
 
 - Framework Token: 50%以上削減
 - Accepted Taskあたり総Token: 30%以上削減
@@ -280,5 +217,8 @@ Tests/ExternalProviders/cases.yaml
 - External Provider必須化: 0
 - Raw Evidence喪失: 0
 - User Policy自動昇格: 0
+- Human/Quota Block中のProvider Probe: 0
+- Duplicate Quota Spend: 0
+- Non-personal `project_internal` Memory leak: 0
 
 公開事例の最大値をそのまま目標にせず、同一Unity Task、同一Source Revision、同一Acceptance CriteriaのA/B比較で採用判断します。
