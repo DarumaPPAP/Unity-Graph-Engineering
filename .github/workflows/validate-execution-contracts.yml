@@ -11,6 +11,7 @@ on:
       - "Tools/IxAdapter/**"
       - "Tools/ContinuationController/**"
       - "Tools/LayeredMemoryController/**"
+      - "Tools/ExecutionOrchestrator/**"
       - "Tests/**"
       - "tests/**"
       - "workflow-templates/**"
@@ -29,6 +30,7 @@ on:
       - "Tools/IxAdapter/**"
       - "Tools/ContinuationController/**"
       - "Tools/LayeredMemoryController/**"
+      - "Tools/ExecutionOrchestrator/**"
       - "Tests/**"
       - "tests/**"
       - "workflow-templates/**"
@@ -48,8 +50,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install YAML parser
-        run: python -m pip install --disable-pip-version-check pyyaml
+      - name: Install validation dependencies
+        run: python -m pip install --disable-pip-version-check pyyaml jsonschema
+
+      - name: Compile Python control plane
+        run: python -m compileall -q Tools Tests
 
       - name: Validate YAML syntax
         run: |
@@ -65,7 +70,21 @@ jobs:
           for path in paths:
               with path.open(encoding='utf-8') as stream:
                   yaml.safe_load(stream)
-              print(f'validated: {path}')
+              print(f'validated yaml: {path}')
+          PY
+
+      - name: Validate JSON Schemas
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+          from jsonschema import Draft202012Validator
+
+          for path in sorted(Path('schemas').glob('*.yaml')):
+              with path.open(encoding='utf-8') as stream:
+                  schema = yaml.safe_load(stream)
+              Draft202012Validator.check_schema(schema)
+              print(f'validated schema: {path}')
           PY
 
       - name: Validate execution policy coherence
@@ -81,19 +100,23 @@ jobs:
           test -f policies/external-providers.yaml
           test -f policies/continuation-control.yaml
           test -f policies/memory-layering.yaml
+          test -f policies/execution-orchestration.yaml
           test -f schemas/capability-manifest.schema.yaml
           test -f schemas/execution-state.schema.yaml
           test -f schemas/continuation-state.schema.yaml
           test -f schemas/memory-layer.schema.yaml
+          test -f schemas/execution-orchestration.schema.yaml
           test -f workflow-templates/verified-mutation.yaml
           test -f tests/contract-routing-cases.yaml
           test -f Tests/ExternalProviders/cases.yaml
           test -f Tests/ExternalProviders/test_ix_adapter.py
           test -f Tests/ExternalProviders/test_continuation_controller.py
           test -f Tests/ExternalProviders/test_layered_memory_controller.py
+          test -f Tests/ExternalProviders/test_execution_orchestrator.py
           test -f Tools/IxAdapter/ix_adapter.py
           test -f Tools/ContinuationController/continuation_controller.py
           test -f Tools/LayeredMemoryController/layered_memory_controller.py
+          test -f Tools/ExecutionOrchestrator/execution_orchestrator.py
           test -f docs/external-intelligence-control-plane.md
           test -f examples/continuation-controller-input.json
           test -f examples/layered-memory-capture.json
