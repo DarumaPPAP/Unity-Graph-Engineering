@@ -37,6 +37,11 @@ REQUIRED_FILES = {
         "auto_install: false",
         "probe_external_providers: false",
         "direct_source_read_required_before_mutation: true",
+        "path: Tools/IxAdapter/ix_adapter.py",
+        "arbitrary_command_passthrough: false",
+        "destructive_commands_exposed: false",
+        "trace_must_be_bounded: true",
+        "reset_command_forbidden: true",
     ],
     "policies/continuation-control.yaml": [
         "quota_is_permission: false",
@@ -84,6 +89,19 @@ REQUIRED_FILES = {
         "QuotaはPermissionでもBudgetでもありません",
         "L0 Raw Evidence",
     ],
+    "skills/unity-graph-engineering/references/code-intelligence-provider.md": [
+        "Tools/IxAdapter/ix_adapter.py",
+        "shell=False",
+        "--depth 3 --cap 100",
+        "targeted_source_read",
+    ],
+    "Tools/IxAdapter/ix_adapter.py": [
+        "SAFE_OPERATIONS",
+        "DEFAULT_TRACE_DEPTH = 3",
+        "DEFAULT_TRACE_CAP = 100",
+        "shell=False",
+        "fallback=\"targeted_source_read\"",
+    ],
     "Tests/ExecutionRouting/cases.yaml": [
         "expected_initial_mode: prompt",
         "silent_switch_forbidden: true",
@@ -92,6 +110,12 @@ REQUIRED_FILES = {
         "ix-unavailable-does-not-block",
         "quota-cannot-bypass-human-gate",
         "user-policy-promotion-needs-human",
+    ],
+    "Tests/ExternalProviders/test_ix_adapter.py": [
+        "test_missing_cli_is_unavailable_and_falls_back",
+        "test_trace_is_bounded",
+        "test_target_cannot_be_option_injection",
+        "test_subprocess_never_uses_shell",
     ],
 }
 
@@ -125,6 +149,20 @@ def validate(root: Path) -> list[str]:
             errors.append("Team Safe Import must not probe external providers.")
         if "auto_install: false" not in text:
             errors.append("External providers must not auto-install.")
+        if "arbitrary_command_passthrough: false" not in text:
+            errors.append("Ix adapter must not expose arbitrary command passthrough.")
+        if "destructive_commands_exposed: false" not in text:
+            errors.append("Ix adapter must not expose destructive commands.")
+
+    ix_adapter = root / "Tools/IxAdapter/ix_adapter.py"
+    if ix_adapter.is_file():
+        text = ix_adapter.read_text(encoding="utf-8")
+        if '"reset",' in text or "'reset'," in text:
+            errors.append("Ix reset must not appear in SAFE_OPERATIONS.")
+        if "shell=False" not in text:
+            errors.append("Ix adapter subprocess execution must keep shell=False.")
+        if "DEFAULT_TRACE_DEPTH = 3" not in text or "DEFAULT_TRACE_CAP = 100" not in text:
+            errors.append("Ix trace must keep bounded defaults.")
 
     continuation = root / "policies/continuation-control.yaml"
     if continuation.is_file():
