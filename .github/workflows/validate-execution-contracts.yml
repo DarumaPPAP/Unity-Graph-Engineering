@@ -14,6 +14,8 @@ on:
       - "Tests/**"
       - "tests/**"
       - "workflow-templates/**"
+      - "docs/external-intelligence-control-plane.md"
+      - "examples/**"
       - ".github/workflows/validate-execution-contracts.yml"
   push:
     branches:
@@ -30,6 +32,8 @@ on:
       - "Tests/**"
       - "tests/**"
       - "workflow-templates/**"
+      - "docs/external-intelligence-control-plane.md"
+      - "examples/**"
       - ".github/workflows/validate-execution-contracts.yml"
 
 jobs:
@@ -90,3 +94,6 @@ jobs:
           test -f Tools/IxAdapter/ix_adapter.py
           test -f Tools/ContinuationController/continuation_controller.py
           test -f Tools/LayeredMemoryController/layered_memory_controller.py
+          test -f docs/external-intelligence-control-plane.md
+          test -f examples/continuation-controller-input.json
+          test -f examples/layered-memory-capture.json
