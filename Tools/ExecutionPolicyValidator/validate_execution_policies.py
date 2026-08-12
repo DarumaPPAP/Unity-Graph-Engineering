@@ -47,6 +47,10 @@ REQUIRED_FILES = {
         "quota_is_permission: false",
         "continuation_requires_valid_writeback: true",
         "unbounded_autonomy_forbidden: true",
+        "implementation: Tools/ContinuationController/continuation_controller.py",
+        "quota_spend_requires_validated_writeback: true",
+        "continuous_monitor:",
+        "expired_lease_returns_todo_to_unclaimed: true",
     ],
     "policies/memory-layering.yaml": [
         "raw_evidence_required: true",
@@ -57,6 +61,8 @@ REQUIRED_FILES = {
         "execution_mode:",
         "mode_locked_for_goal:",
         "continuation:",
+        "should_run:",
+        "budget_guard",
         "memory_projection:",
         "budget:",
     ],
@@ -65,9 +71,12 @@ REQUIRED_FILES = {
         "captured_at:",
     ],
     "schemas/continuation-state.schema.yaml": [
-        "decision:",
-        "compute_share:",
-        "writeback_complete:",
+        "native_continuation",
+        "should_run:",
+        "budget_guard",
+        "runnable_candidates:",
+        "blocked_candidates:",
+        "allowed_slots:",
     ],
     "schemas/memory-layer.schema.yaml": [
         "L0_raw_evidence",
@@ -86,7 +95,8 @@ REQUIRED_FILES = {
         "明示指定またはユーザー承認",
         "LoopはNode内部",
         "IxはNavigation Layer",
-        "QuotaはPermissionでもBudgetでもありません",
+        "Tools/ContinuationController/continuation_controller.py",
+        "WritebackとEvidenceなしではQuotaをSpendせず",
         "L0 Raw Evidence",
     ],
     "skills/unity-graph-engineering/references/code-intelligence-provider.md": [
@@ -95,12 +105,27 @@ REQUIRED_FILES = {
         "--depth 3 --cap 100",
         "targeted_source_read",
     ],
+    "skills/unity-graph-engineering/references/continuation-control.md": [
+        "Native LoopX-inspired Controller",
+        "evaluate",
+        "claim",
+        "spend",
+        "monitor_quiet_skip",
+    ],
     "Tools/IxAdapter/ix_adapter.py": [
         "SAFE_OPERATIONS",
         "DEFAULT_TRACE_DEPTH = 3",
         "DEFAULT_TRACE_CAP = 100",
         "shell=False",
         "fallback=\"targeted_source_read\"",
+    ],
+    "Tools/ContinuationController/continuation_controller.py": [
+        "def evaluate(",
+        "def claim(",
+        "def spend(",
+        "OWNER_HELD_CAPABILITIES",
+        "monitor_quiet_skip",
+        "quota cannot be spent before durable writeback",
     ],
     "Tests/ExecutionRouting/cases.yaml": [
         "expected_initial_mode: prompt",
@@ -116,6 +141,11 @@ REQUIRED_FILES = {
         "test_trace_is_bounded",
         "test_target_cannot_be_option_injection",
         "test_subprocess_never_uses_shell",
+    ],
+    "Tests/ExternalProviders/test_continuation_controller.py": [
+        "test_human_gate_precedes_quota",
+        "test_monitor_only_lane_is_quiet",
+        "test_spend_updates_projection_only_after_validated_writeback",
     ],
 }
 
@@ -169,6 +199,20 @@ def validate(root: Path) -> list[str]:
         text = continuation.read_text(encoding="utf-8")
         if "quota_is_permission: false" not in text:
             errors.append("Quota must remain separate from permission.")
+        if "quota_spend_requires_validated_writeback: true" not in text:
+            errors.append("Quota spend must require validated writeback.")
+        if "controller_does_not_own_state_authority: true" not in text:
+            errors.append("Continuation controller must remain a projection, not state authority.")
+
+    continuation_controller = root / "Tools/ContinuationController/continuation_controller.py"
+    if continuation_controller.is_file():
+        text = continuation_controller.read_text(encoding="utf-8")
+        if "execution_mode != \"graph_loop\"" not in text:
+            errors.append("Continuation controller must reject non graph_loop execution mode.")
+        if "writeback_complete" not in text or "evidence_refs" not in text:
+            errors.append("Continuation quota spend must remain tied to writeback and evidence.")
+        if "OWNER_HELD_CAPABILITIES" not in text:
+            errors.append("Continuation controller must preserve owner-held capability routing.")
 
     memory = root / "policies/memory-layering.yaml"
     if memory.is_file():
