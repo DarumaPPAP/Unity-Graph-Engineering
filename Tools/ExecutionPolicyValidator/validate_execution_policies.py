@@ -11,6 +11,9 @@ REQUIRED_FILES = {
     "AGENTS.md": [
         "モード指定がない依頼は`prompt`",
         "`graph_loop`へ無断で切り替えない",
+        "IxはOptional Code Intelligence",
+        "QuotaはPermissionではない",
+        "User Policyへ自動昇格しない",
     ],
     "policies/execution-mode.yaml": [
         "default_mode: prompt",
@@ -30,14 +33,41 @@ REQUIRED_FILES = {
         "required: true",
         "ask_once_per_goal: true",
     ],
+    "policies/external-providers.yaml": [
+        "auto_install: false",
+        "probe_external_providers: false",
+        "direct_source_read_required_before_mutation: true",
+    ],
+    "policies/continuation-control.yaml": [
+        "quota_is_permission: false",
+        "continuation_requires_valid_writeback: true",
+        "unbounded_autonomy_forbidden: true",
+    ],
+    "policies/memory-layering.yaml": [
+        "raw_evidence_required: true",
+        "symbolic_projection_is_not_source_of_truth: true",
+        "auto_update_user_policy: false",
+    ],
     "schemas/execution-state.schema.yaml": [
         "execution_mode:",
         "mode_locked_for_goal:",
+        "continuation:",
+        "memory_projection:",
         "budget:",
     ],
     "schemas/evidence.schema.yaml": [
         "verdict:",
         "captured_at:",
+    ],
+    "schemas/continuation-state.schema.yaml": [
+        "decision:",
+        "compute_share:",
+        "writeback_complete:",
+    ],
+    "schemas/memory-layer.schema.yaml": [
+        "L0_raw_evidence",
+        "L3_reusable_candidate",
+        "promotion_target:",
     ],
     "skills/unity-execution-router/SKILL.md": [
         "無指定時は必ず`prompt`",
@@ -50,10 +80,18 @@ REQUIRED_FILES = {
     "skills/unity-graph-engineering/SKILL.md": [
         "明示指定またはユーザー承認",
         "LoopはNode内部",
+        "IxはNavigation Layer",
+        "QuotaはPermissionでもBudgetでもありません",
+        "L0 Raw Evidence",
     ],
     "Tests/ExecutionRouting/cases.yaml": [
         "expected_initial_mode: prompt",
         "silent_switch_forbidden: true",
+    ],
+    "Tests/ExternalProviders/cases.yaml": [
+        "ix-unavailable-does-not-block",
+        "quota-cannot-bypass-human-gate",
+        "user-policy-promotion-needs-human",
     ],
 }
 
@@ -79,6 +117,28 @@ def validate(root: Path) -> list[str]:
             errors.append("Unspecified requests must route to prompt.")
         if "explicit_selection_only: true" not in text:
             errors.append("Auto mode must remain explicit-selection only.")
+
+    external_providers = root / "policies/external-providers.yaml"
+    if external_providers.is_file():
+        text = external_providers.read_text(encoding="utf-8")
+        if "team_safe_import:" not in text or "probe_external_providers: false" not in text:
+            errors.append("Team Safe Import must not probe external providers.")
+        if "auto_install: false" not in text:
+            errors.append("External providers must not auto-install.")
+
+    continuation = root / "policies/continuation-control.yaml"
+    if continuation.is_file():
+        text = continuation.read_text(encoding="utf-8")
+        if "quota_is_permission: false" not in text:
+            errors.append("Quota must remain separate from permission.")
+
+    memory = root / "policies/memory-layering.yaml"
+    if memory.is_file():
+        text = memory.read_text(encoding="utf-8")
+        if "raw_evidence_required: true" not in text:
+            errors.append("Layered memory must preserve raw evidence.")
+        if "auto_update_user_policy: false" not in text:
+            errors.append("Memory must not auto-update user policy.")
 
     return errors
 

@@ -1,13 +1,13 @@
 ---
 name: unity-graph-engineering
-description: Use only after explicit user selection or approved escalation when Unity work requires multiple subsystems, independent branches, bounded iteration, runtime or visual evidence, migration, rollback, or separate verification. Owns the typed task graph and node loops. Do not use for bounded work suitable for unity-prompt-execution.
+description: Use only after explicit user selection or approved escalation when Unity work requires multiple subsystems, independent branches, bounded iteration, runtime or visual evidence, migration, rollback, or separate verification. Owns the typed task graph, continuation control, optional code intelligence, layered execution memory, and bounded node loops. Do not use for bounded work suitable for unity-prompt-execution.
 allowed-tools:
   - Read
   - Write
   - Edit
   - Bash
 metadata:
-  version: "2.0.0"
+  version: "2.1.0"
 ---
 
 # Unity Graph / Loop Engineering
@@ -26,7 +26,7 @@ metadata:
 6. `policies/graph-loop-budget.yaml`
 7. Human Gate
 
-全Skill、全Reference、全Toolを一括で公開しません。
+全Skill、全Reference、全Toolを一括で公開しません。Ix / LoopX / TencentDB-Agent-Memoryの外部RuntimeはRequired inputではありません。
 
 ## Goal Contract
 
@@ -69,6 +69,47 @@ Join / Evidence Review
 Human Gate
 ```
 
+## Optional code intelligence
+
+`personal_full_control`でIxが利用可能な場合、構造探索・Trace・Impact Analysisへ使用できます。
+
+- IxはNavigation LayerでありSource of Truthではありません。
+- Provider unavailableでもTaskを止めません。
+- Mutation前には対象Sourceを直接読みます。
+- Source変更後は可能ならMapをrefreshします。
+- Graph結果だけでRuntime / Visual / Performance GateをPASSにしません。
+
+詳細: `references/code-intelligence-provider.md`、`policies/external-providers.yaml`
+
+## Continuation control
+
+Graph / Loopの継続は、LoopXから取り入れたObjective / Typed Todo / Claim / Lease / Quota / Evidence Writeback思想をnative contractとして扱います。
+
+```text
+Health Gate → Human Gate → Evidence Wait → Focus Wait → Quota
+                                                   ↓
+                                           One bounded slice
+                                                   ↓
+                                          Evidence + Writeback
+```
+
+**QuotaはPermissionでもBudgetでもありません。** Human GateやSafety Gateを上書きできません。Writebackなしで次のsliceへ進みません。
+
+詳細: `references/continuation-control.md`、`policies/continuation-control.yaml`
+
+## Layered memory
+
+長いTool Outputや過去TurnをContextへ保持し続けません。
+
+- L0 Raw Evidence
+- L1 Atom
+- L2 Scenario
+- L3 Reusable Candidate
+
+上位Memoryは必ずEvidenceへdrill downできるようにします。Symbolic ProjectionはContext圧縮用でありState authorityではありません。User Policyへ自動昇格しません。
+
+詳細: `references/layered-memory.md`、`policies/memory-layering.yaml`
+
 ## Node loop
 
 LoopはNode内部だけで実行します。
@@ -96,6 +137,8 @@ Input -> Action -> Observe -> Evaluate
 
 Mode変更時は確認済み事実、棄却仮説、対象Artifact、残Budgetだけを型付きStateとして引き継ぎます。
 
+ContinuationとMemory Projectionも`schemas/execution-state.schema.yaml`のOptional fieldとして保持できます。外部Runtime stateを正本にしません。
+
 ## Independent verification
 
 Makerとは別ContextのVerifierが次を返します。
@@ -114,6 +157,9 @@ VerifierへMakerの思考履歴全体を渡しません。Goal、Diff、対象So
 - Performance failure: Baselineと主要仮説を再設定
 - Scope violation: Patch除去またはRevert
 - Contract conflict: Human decisionまで停止
+- Code intelligence unavailable: targeted Source readへFallback
+- Memory projection broken: Raw Evidenceから再構築
+- Continuation writeback missing: 次のsliceを開始しない
 
 失敗理由に関係なく同じ実装Nodeへ戻しません。
 
@@ -127,6 +173,9 @@ Knowledge Graphは候補Artifactの絞り込みに使用します。実装変更
 - Goal達成状態
 - Graph versionとNode結果
 - AttemptとBudget
+- Continuation decision / Quota state
+- 使用したOptional ProviderとFallback
+- Memory Projection / Raw Evidence refs
 - 変更Artifact
 - Verifier verdictとEvidence
 - 未検証事項
@@ -142,3 +191,7 @@ Knowledge Graphは候補Artifactの絞り込みに使用します。実装変更
 - 全Nodeへ巨大な同一Contextを渡す
 - 同じFailure Signatureを仮説変更なしで反復する
 - AIの自己申告でAPPROVEする
+- Ixを必須Project Scannerにする
+- QuotaでHuman Gateを迂回する
+- 圧縮Memoryだけ残してRaw Evidenceを捨てる
+- MemoryからUser Policyを自動生成する

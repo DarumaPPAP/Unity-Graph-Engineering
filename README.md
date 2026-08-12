@@ -75,6 +75,35 @@ Project Context GeneratorとUnity Command SurfaceはOptionalな加速装置で�
 
 Personal Toolとは別製品とし、Project Scanner、Source Export、Screenshot、Hierarchy、Unity Project ID、Git、Issue、Cloud、Environment Variable、組織情報、顧客情報へのアクセス機能を持ちません。禁止情報はReport Schemaにも追加しません。
 
+## External intelligence / control plane
+
+Graph / Loop向けに3つの公開Projectから設計を取り込みました。**外部Runtimeは必須依存にしません。**
+
+| Reference | 統合役割 | 既定 |
+|---|---|---|
+| `ix-infrastructure/Ix` | Optional Code Intelligence / Impact / Trace | `personal_full_control`のみ |
+| `huangruiteng/loopx` | Continuation / Todo / Claim / Lease / Quota思想 | Native Contract |
+| `TencentCloud/TencentDB-Agent-Memory` | Layered Memory / Raw Evidence Offload / Symbolic Projection | Native Contract |
+
+```text
+Ix structural map ───────┐
+                         ▼
+Goal → Graph → Continuation Decision → Bounded Node Slice
+                         │                    │
+                         │                    ▼
+                         │             Raw Evidence (L0)
+                         │                    ↓
+                         └──────────── Atom → Scenario → Reusable Candidate
+```
+
+- Ixは読むSourceを絞るNavigation Layerであり、Mutation前のSource確認やRuntime Evidenceを置き換えません。
+- LoopX由来のQuotaはPermissionやBudgetと分離し、Human Gateを迂回できません。
+- TencentDB-Agent-Memory由来の圧縮Memoryは必ずRaw Evidenceへdrill down可能にします。
+- MemoryからUnityAgent User Policyへ自動昇格しません。
+- 外部Package/Runtimeは自動Installせず、導入はHuman Gateです。
+
+詳細: `docs/external-intelligence-control-plane.md`
+
 ## Core files
 
 ```text
@@ -85,7 +114,10 @@ policies/
 ├─ graph-loop-budget.yaml
 ├─ mode-escalation.yaml
 ├─ contract-routing.yaml
-└─ evidence-admission.yaml
+├─ evidence-admission.yaml
+├─ external-providers.yaml
+├─ continuation-control.yaml
+└─ memory-layering.yaml
 
 skills/
 ├─ unity-execution-router/
@@ -95,7 +127,9 @@ skills/
 schemas/
 ├─ execution-state.schema.yaml
 ├─ evidence.schema.yaml
-└─ capability-manifest.schema.yaml
+├─ capability-manifest.schema.yaml
+├─ continuation-state.schema.yaml
+└─ memory-layer.schema.yaml
 
 workflow-templates/
 └─ verified-mutation.yaml
@@ -142,11 +176,11 @@ Unity Tool
 → Automated Validation
 ```
 
-Capability Manifestは存在する場合だけ利用し、`available`、`unavailable`、`unknown`、`prohibited`を区別します。
+Capability Manifestは存在する場合だけ利用し、`available`、`unavailable`、`unknown`、`prohibited`を区別します。Ix等のExternal Providerも同じManifestでOptional Capabilityとして表現できます。
 
-## Budget
+## Budget, gate, and quota
 
-PromptとGraph / Loopで別の上限を持ちます。
+PromptとGraph / Loopで別のBudget上限を持ちます。
 
 - file reads
 - context expansion hops
@@ -159,7 +193,17 @@ PromptとGraph / Loopで別の上限を持ちます。
 
 新しいNodeまたはAttempt開始前に残Budgetを確認します。
 
-## State and evidence
+Graph / LoopではさらにContinuation Quotaを分離します。
+
+```text
+Gate  = 実行してよいか
+Budget = 最大どこまで消費してよいか
+Quota = eligibleなGoal/Nodeへ次の実行枠を与えるか
+```
+
+Quotaが残っていてもHuman GateやEvidence Waitを越えません。
+
+## State, evidence, and memory
 
 Transcriptを実行Stateとして引き継ぎません。
 
@@ -170,7 +214,7 @@ STATE/checkpoints/
 Evidence/
 ```
 
-Execution StateにはExecution Profile、Task Contract ID、Primary Knowledge、未解決Project Binding、Quality Gateを保存します。
+Execution StateにはExecution Profile、Task Contract ID、Primary Knowledge、未解決Project Binding、Quality Gateに加え、必要な場合のみContinuationとMemory Projectionを保存します。
 
 Quality Gateの状態:
 
@@ -180,9 +224,13 @@ Quality Gateの状態:
 
 `unavailable`は計画を止めませんが、成功とは扱いません。理由、Claim Scope縮小、残検証を必ず記録します。
 
+Layered Memoryは `L0 Raw Evidence → L1 Atom → L2 Scenario → L3 Reusable Candidate`。上位層だけを残してEvidenceを破棄しません。
+
 正本:
 
 - `schemas/execution-state.schema.yaml`
+- `schemas/continuation-state.schema.yaml`
+- `schemas/memory-layer.schema.yaml`
 - `policies/evidence-admission.yaml`
 
 ## Team Safe Import evidence
@@ -200,9 +248,23 @@ Quality Gateの状態:
 - Issue ID
 - Unity Project ID
 
+External ProviderのprobeやProject scanningも行いません。
+
 ## Human gates
 
 PR Merge、main直接Push、File削除、Package、ProjectSettings、Render Pipeline、Scene大規模変更、品質と性能のTrade-off、実機品質の最終承認、Execution Profile変更はHuman Gateです。
+
+## Validation
+
+```bash
+python Tools/ExecutionPolicyValidator/validate_execution_policies.py
+```
+
+Provider / Continuation / Memory regression contract:
+
+```text
+Tests/ExternalProviders/cases.yaml
+```
 
 ## Pilot KPI
 
@@ -215,5 +277,8 @@ PR Merge、main直接Push、File削除、Package、ProjectSettings、Render Pipe
 - Silent Mode Switch: 0
 - Unbounded Retry: 0
 - Unavailable Gateの成功誤報: 0
+- External Provider必須化: 0
+- Raw Evidence喪失: 0
+- User Policy自動昇格: 0
 
 公開事例の最大値をそのまま目標にせず、同一Unity Task、同一Source Revision、同一Acceptance CriteriaのA/B比較で採用判断します。

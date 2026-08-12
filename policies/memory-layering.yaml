@@ -1,0 +1,87 @@
+schema_version: "1.0"
+inspired_by: TencentCloud/TencentDB-Agent-Memory
+authority: Unity-Graph-Engineering native contract
+external_runtime_required: false
+
+purpose:
+  - reduce repeated tool-output context
+  - preserve drill-down traceability to raw evidence
+  - separate transient execution memory from reusable knowledge
+
+invariants:
+  raw_evidence_required: true
+  irreversible_summary_only_storage_forbidden: true
+  high_level_memory_must_reference_lower_level_evidence: true
+  symbolic_projection_is_not_source_of_truth: true
+  auto_update_user_policy: false
+  auto_promote_unverified_memory_to_knowledge: false
+  secret_capture_forbidden: true
+
+layers:
+  L0_raw_evidence:
+    role: lossless_or_source_faithful_execution_artifact
+    examples:
+      - tool_output
+      - compiler_log
+      - test_result
+      - diff
+      - profiler_result
+    storage: Evidence/raw/
+
+  L1_atom:
+    role: one_verified_or_scoped_observation
+    requires:
+      - atom_id
+      - statement
+      - raw_refs
+      - confidence
+
+  L2_scenario:
+    role: reusable_execution_pattern_or_failure_context
+    requires:
+      - scenario_id
+      - atom_refs
+      - applicability
+      - limits
+
+  L3_reusable_candidate:
+    role: candidate_for_cross_run_knowledge_or_skill
+    requires:
+      - scenario_refs
+      - provenance
+      - promotion_target
+      - review_status
+
+short_term_projection:
+  allowed_formats:
+    - yaml
+    - markdown
+    - mermaid
+  source_of_truth: STATE/current.yaml
+  purpose: compact_context_projection
+  drill_down_key: evidence_or_memory_id
+  full_tool_output_in_prompt_by_default: false
+
+promotion:
+  transient_to_atom:
+    requires_evidence: true
+  atom_to_scenario:
+    requires_repeated_or_generalizable_signal: true
+  scenario_to_reusable_candidate:
+    requires_provenance: true
+  candidate_to_unityagent_knowledge:
+    requires_verification: true
+  candidate_to_user_policy:
+    requires_human_gate: true
+    automatic_promotion: false
+
+retention:
+  keep_raw_when_summary_exists: true
+  supersede_instead_of_silent_overwrite: true
+  conflict_must_preserve_both_sides_until_resolved: true
+
+retrieval:
+  load_top_layer_first: true
+  drill_down_only_when_needed: true
+  prefer_same_repository_version_platform: true
+  never_treat_memory_as_runtime_proof_without_evidence: true

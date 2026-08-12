@@ -119,6 +119,26 @@ Schema:
 
 - `schemas/capability-manifest.schema.yaml`
 
+### External intelligence providers
+
+- IxはOptional Code Intelligenceとして`personal_full_control`でのみProject構造探索へ使用する。
+- Ixが無くてもSource read / repository searchへFallbackしてTaskを継続する。
+- Ix結果はNavigationであり、Mutation前のDirect Source ReadやRuntime Evidenceを置き換えない。
+- LoopX Runtimeを必須依存にせず、Objective / Todo / Claim / Lease / Quota / Writebackをnative Continuation Contractとして利用する。
+- QuotaはPermissionではない。Human Gate、Safety Gate、Budgetを上書きしない。
+- TencentDB-Agent-MemoryのLayering思想を使い、Raw Evidence → Atom → Scenario → Reusable Candidateとして圧縮する。
+- Symbolic MemoryはProjectionでありState Source of Truthではない。
+- MemoryからUnityAgent User Policyへ自動昇格しない。User Policy候補の採用にはHuman Gateを要求する。
+- 外部Package/Runtimeの自動Installは禁止し、導入はPackage Human Gateとして別扱いにする。
+- `team_safe_import`ではExternal Providerをprobeせず、Project Scannerとして使用しない。
+
+正本:
+
+- `policies/external-providers.yaml`
+- `policies/continuation-control.yaml`
+- `policies/memory-layering.yaml`
+- `docs/external-intelligence-control-plane.md`
+
 ## 7. State and evidence
 
 Graph / Loopでは次を分離する。
@@ -138,6 +158,9 @@ Execution Stateには次を記録する。
 - Primary Knowledge ID
 - Unresolved Project Bindings
 - Quality Gate Status
+- Optional External Provider State
+- Continuation Decision / Quota projection
+- Layered Memory projection and Raw Evidence refs
 
 Quality Gateは`passed`、`failed`、`unavailable`のいずれか。
 
@@ -146,11 +169,14 @@ Quality Gateは`passed`、`failed`、`unavailable`のいずれか。
 - 理由、Claim Scope縮小、残検証を記録する。
 - 実行していない検証をPASSにしない。
 - AIの自己申告だけをEvidenceにしない。
+- 圧縮Memoryだけを残してRaw Evidenceを破棄しない。
 
 正本:
 
 - `schemas/execution-state.schema.yaml`
 - `schemas/evidence.schema.yaml`
+- `schemas/continuation-state.schema.yaml`
+- `schemas/memory-layer.schema.yaml`
 - `policies/evidence-admission.yaml`
 
 ## 8. Human gates
@@ -179,6 +205,9 @@ Quality Gateは`passed`、`failed`、`unavailable`のいずれか。
 - Task Contract
 - Goal達成状態
 - 変更Artifact
+- Optional Providerの利用/Fallback状態
+- Continuation Decision / Quota
+- Memory ProjectionとRaw Evidence refs
 - 実施したQuality Gate
 - `unavailable` Gateと残検証
 - Evidenceまたは未検証事項

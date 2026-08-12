@@ -42,3 +42,8 @@ sysinfo.txt
 
 # Local graph output
 GraphData/*.json
+
+# Optional external control-plane runtime state
+.loopx/
+.local/
+.codex/goals/

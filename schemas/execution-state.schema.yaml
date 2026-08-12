@@ -111,6 +111,48 @@ properties:
         enum: [APPROVE, REJECT, ESCALATE_HUMAN, NOT_RUN]
       summary:
         type: string
+  external_context:
+    type: object
+    properties:
+      code_intelligence_provider:
+        enum: [none, ix]
+      provider_revision:
+        type: [string, "null"]
+      structural_evidence_ids:
+        type: array
+        items:
+          type: string
+    additionalProperties: false
+  continuation:
+    type: [object, "null"]
+    properties:
+      decision:
+        enum: [run, ask_human, wait, blocked, complete]
+      lane:
+        enum: [health_gate, human_gate, evidence_wait, focus_wait, compute_quota, bounded_work, complete]
+      reason:
+        type: string
+      writeback_complete:
+        type: boolean
+      todo_id:
+        type: [string, "null"]
+      compute_share:
+        type: number
+        minimum: 0.0
+        maximum: 1.0
+    additionalProperties: false
+  memory_projection:
+    type: [object, "null"]
+    properties:
+      projection_id:
+        type: string
+      highest_layer:
+        enum: [L0_raw_evidence, L1_atom, L2_scenario, L3_reusable_candidate]
+      raw_evidence_refs:
+        type: array
+        items:
+          type: string
+    additionalProperties: false
   budget:
     type: object
     required:

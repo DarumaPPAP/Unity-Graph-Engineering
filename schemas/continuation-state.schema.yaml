@@ -1,0 +1,57 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: Unity Graph Continuation State
+type: object
+required:
+  - decision
+  - lane
+  - reason
+  - quota
+properties:
+  decision:
+    enum: [run, ask_human, wait, blocked, complete]
+  lane:
+    enum: [health_gate, human_gate, evidence_wait, focus_wait, compute_quota, bounded_work, complete]
+  reason:
+    type: string
+  todo:
+    type: [object, "null"]
+    properties:
+      id:
+        type: string
+      owner:
+        type: [string, "null"]
+      status:
+        enum: [unclaimed, claimed, running, waiting, completed, blocked]
+      lease_id:
+        type: [string, "null"]
+    additionalProperties: false
+  quota:
+    type: object
+    required:
+      - compute_share
+      - eligible
+    properties:
+      compute_share:
+        type: number
+        minimum: 0.0
+        maximum: 1.0
+      eligible:
+        type: boolean
+      spent_slots:
+        type: integer
+        minimum: 0
+      allowed_slots:
+        type: integer
+        minimum: 0
+      reason:
+        type: [string, "null"]
+    additionalProperties: false
+  blocking_gate:
+    type: [string, "null"]
+  evidence_refs:
+    type: array
+    items:
+      type: string
+  writeback_complete:
+    type: boolean
+additionalProperties: false

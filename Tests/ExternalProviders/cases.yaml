@@ -1,0 +1,64 @@
+schema_version: "1.0"
+cases:
+  - id: ix-unavailable-does-not-block
+    profile: personal_full_control
+    provider:
+      ix: unavailable
+    expected:
+      continue: true
+      fallback: targeted_source_read
+      mutation_requires_direct_source_read: true
+
+  - id: ix-team-safe-import-prohibited
+    profile: team_safe_import
+    provider:
+      ix: unknown
+    expected:
+      probe_provider: false
+      project_scan: false
+      status: prohibited
+
+  - id: ix-impact-is-navigation-not-runtime-proof
+    profile: personal_full_control
+    provider:
+      ix: available
+    action: pre_mutation_impact
+    expected:
+      use_for_scope_selection: true
+      runtime_gate_passed: false
+      direct_source_read_required: true
+
+  - id: quota-cannot-bypass-human-gate
+    execution_mode: graph_loop
+    human_gate: required
+    quota:
+      compute_share: 1.0
+      eligible: true
+    expected:
+      decision: ask_human
+      run: false
+
+  - id: continuation-needs-writeback
+    execution_mode: graph_loop
+    previous_slice:
+      writeback_complete: false
+    expected:
+      decision: blocked
+      quota_spend: false
+
+  - id: symbolic-memory-needs-raw-ref
+    memory:
+      layer: L1_atom
+      raw_refs: []
+    expected:
+      valid: false
+      promotion_allowed: false
+
+  - id: user-policy-promotion-needs-human
+    memory:
+      layer: L3_reusable_candidate
+      promotion_target: user_policy_candidate
+      review_status: pending
+    expected:
+      auto_promote: false
+      human_gate: true

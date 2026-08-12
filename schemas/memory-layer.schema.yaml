@@ -1,0 +1,55 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: Unity Graph Layered Memory
+type: object
+required:
+  - memory_id
+  - layer
+  - created_at
+properties:
+  memory_id:
+    type: string
+  layer:
+    enum: [L0_raw_evidence, L1_atom, L2_scenario, L3_reusable_candidate]
+  created_at:
+    type: string
+  statement:
+    type: [string, "null"]
+  raw_refs:
+    type: array
+    items:
+      type: string
+  atom_refs:
+    type: array
+    items:
+      type: string
+  scenario_refs:
+    type: array
+    items:
+      type: string
+  applicability:
+    type: array
+    items:
+      type: string
+  limits:
+    type: array
+    items:
+      type: string
+  confidence:
+    enum: [verified, probable, unverified]
+  provenance:
+    type: array
+    items:
+      type: string
+  promotion_target:
+    enum: [none, execution_reference, unityagent_knowledge, user_policy_candidate]
+  review_status:
+    enum: [not_required, pending, approved, rejected]
+  supersedes:
+    type: array
+    items:
+      type: string
+  conflicts_with:
+    type: array
+    items:
+      type: string
+additionalProperties: false

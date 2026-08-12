@@ -28,6 +28,41 @@
 
 Knowledge Graph教材の原文や資料は再配布しない。
 
+## ix-infrastructure/Ix
+
+- Reference: persistent Code Graph、Map / Explain / Trace / Impact、LLM向け構造探索
+- License: Apache-2.0
+- Adopted ideas:
+  - Codebase構造を毎回grepで再導出せず、Optionalな構造Navigation Layerを使う
+  - Change ImpactでMutation前の候補Scopeを絞る
+  - Source変更後にGraphをrefreshする
+  - Low-confidenceなGraph結果を確定Factにしない
+
+IxのSource、CLI、ArangoDB構成は本Repositoryへ複製しない。External RuntimeはOptional Adapterとしてのみ扱う。
+
+## huangruiteng/loopx
+
+- Reference: long-running agent control plane、Objective、Typed Todo、Claim、Lease、Quota、Evidence Writeback
+- License: MIT
+- Adopted ideas:
+  - Agent RuntimeとControl Stateを分離する
+  - Gate / Budget / Quotaを別概念として扱う
+  - 一回のContinuationをbounded sliceに制限する
+  - validated writeback後に次のContinuationを判定する
+
+LoopX Runtimeを本RepositoryのAuthorityにはせず、native Policy / Schemaへ再設計している。
+
+## TencentCloud/TencentDB-Agent-Memory
+
+- Reference: layered memory、symbolic short-term memory、raw log offload、progressive disclosure、drill-down traceability
+- License: MIT
+- Adopted ideas:
+  - Raw Evidenceを保持したまま上位Memoryへ圧縮する
+  - Tool Log全体を常時Contextへ載せず、compact projectionから必要時にdrill downする
+  - Memoryを階層化し、再利用候補と一時Stateを分離する
+
+TencentDB、OpenClaw、Hermes Plugin等のRuntime実装は複製・必須化しない。User Policyへの自動昇格も行わない。
+
 ## Unity-Technologies/skills
 
 - Reference: Skill Directory、`SKILL.md` frontmatter、具体的なTrigger、Skill間Delegation、Reference分離
