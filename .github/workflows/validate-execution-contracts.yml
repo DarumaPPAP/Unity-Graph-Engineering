@@ -8,6 +8,7 @@ on:
       - "schemas/**"
       - "skills/unity-graph-engineering/**"
       - "Tools/ExecutionPolicyValidator/**"
+      - "Tools/IxAdapter/**"
       - "Tests/**"
       - "tests/**"
       - "workflow-templates/**"
@@ -21,6 +22,7 @@ on:
       - "schemas/**"
       - "skills/unity-graph-engineering/**"
       - "Tools/ExecutionPolicyValidator/**"
+      - "Tools/IxAdapter/**"
       - "Tests/**"
       - "tests/**"
       - "workflow-templates/**"
@@ -61,6 +63,9 @@ jobs:
       - name: Validate execution policy coherence
         run: python Tools/ExecutionPolicyValidator/validate_execution_policies.py
 
+      - name: Test Ix adapter contract
+        run: python -m unittest discover -s Tests/ExternalProviders -p "test_*.py" -v
+
       - name: Assert required contract files
         run: |
           test -f policies/contract-routing.yaml
@@ -75,3 +80,5 @@ jobs:
           test -f workflow-templates/verified-mutation.yaml
           test -f tests/contract-routing-cases.yaml
           test -f Tests/ExternalProviders/cases.yaml
+          test -f Tests/ExternalProviders/test_ix_adapter.py
+          test -f Tools/IxAdapter/ix_adapter.py
