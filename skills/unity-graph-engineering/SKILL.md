@@ -7,7 +7,7 @@ allowed-tools:
   - Edit
   - Bash
 metadata:
-  version: "2.1.0"
+  version: "2.2.0"
 ---
 
 # Unity Graph / Loop Engineering
@@ -83,17 +83,33 @@ Human Gate
 
 ## Continuation control
 
-Graph / Loopの継続は、LoopXから取り入れたObjective / Typed Todo / Claim / Lease / Quota / Evidence Writeback思想をnative contractとして扱います。
+Graph / Loopの継続は、LoopXから取り入れたObjective / Typed Todo / Claim / Lease / Quota / Evidence Writeback思想をNative Controllerとして実行します。
 
 ```text
-Health Gate → Human Gate → Evidence Wait → Focus Wait → Quota
-                                                   ↓
-                                           One bounded slice
-                                                   ↓
-                                          Evidence + Writeback
+Health Gate → Human Gate → Evidence Wait → Focus Wait → Budget → Quota
+                                                               ↓
+                                                       Todo / Capability
+                                                               ↓
+                                                       One bounded slice
+                                                               ↓
+                                               Evidence + Durable Writeback
+                                                               ↓
+                                                          Quota Spend
 ```
 
-**QuotaはPermissionでもBudgetでもありません。** Human GateやSafety Gateを上書きできません。Writebackなしで次のsliceへ進みません。
+実装は`Tools/ContinuationController/continuation_controller.py`です。
+
+- `evaluate`: `should_run`と次Laneを決定
+- `claim`: 選択TodoのClaim/Lease Projectionを生成
+- `spend`: 検証済みWriteback後だけQuota Spend Projectionを生成
+- Controllerは`STATE/current.yaml`を直接編集しない
+- Activeな他Worker Leaseは飛ばし、Expired Leaseは再取得可能
+- `advancement_task`だけが通常Deliveryを開始できる
+- `continuous_monitor`だけならMaterial Transitionがない限りquiet skip
+- Todo Projectionがtruncatedなら隠れたOpen Todoを保守的にAdvancement扱いする
+- Todo単位の`required_capabilities`を実行前に確認する
+
+**QuotaはPermissionでもBudgetでもありません。** Human GateやSafety Gateを上書きできません。WritebackとEvidenceなしではQuotaをSpendせず、次のsliceへ進みません。
 
 詳細: `references/continuation-control.md`、`policies/continuation-control.yaml`
 
@@ -160,6 +176,8 @@ VerifierへMakerの思考履歴全体を渡しません。Goal、Diff、対象So
 - Code intelligence unavailable: targeted Source readへFallback
 - Memory projection broken: Raw Evidenceから再構築
 - Continuation writeback missing: 次のsliceを開始しない
+- Continuation capability missing: Local repairまたはOwner-held capabilityならHuman Gateへ送る
+- Continuation quota exhausted: Goalを消さず次Windowまで自動継続を停止する
 
 失敗理由に関係なく同じ実装Nodeへ戻しません。
 
@@ -193,5 +211,7 @@ Knowledge Graphは候補Artifactの絞り込みに使用します。実装変更
 - AIの自己申告でAPPROVEする
 - Ixを必須Project Scannerにする
 - QuotaでHuman Gateを迂回する
+- Writeback前にQuotaをSpendする
+- Monitor-only Pollへ毎回Computeを使う
 - 圧縮Memoryだけ残してRaw Evidenceを捨てる
 - MemoryからUser Policyを自動生成する
