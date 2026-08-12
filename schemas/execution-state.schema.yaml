@@ -47,6 +47,10 @@ properties:
     type: array
     items:
       type: string
+  goal_id:
+    type: string
+  goal_complete:
+    type: boolean
   confirmed_facts:
     type: array
     items:
@@ -55,9 +59,7 @@ properties:
     type: array
     items:
       type: object
-      required:
-        - id
-        - resolution
+      required: [id, resolution]
       properties:
         id:
           type: string
@@ -85,9 +87,7 @@ properties:
     type: array
     items:
       type: object
-      required:
-        - gate
-        - status
+      required: [gate, status]
       properties:
         gate:
           type: string
@@ -122,6 +122,104 @@ properties:
         type: array
         items:
           type: string
+    additionalProperties: false
+  health:
+    type: object
+    properties:
+      ok:
+        type: boolean
+      reason:
+        type: [string, "null"]
+    additionalProperties: false
+  human_gate:
+    type: object
+    properties:
+      required:
+        type: boolean
+      satisfied:
+        type: boolean
+      reason:
+        type: [string, "null"]
+    additionalProperties: false
+  evidence_wait:
+    type: object
+    properties:
+      waiting:
+        type: boolean
+      reason:
+        type: [string, "null"]
+    additionalProperties: false
+  focus_wait:
+    type: object
+    properties:
+      waiting:
+        type: boolean
+      reason:
+        type: [string, "null"]
+    additionalProperties: false
+  quota:
+    type: object
+    properties:
+      compute_share:
+        type: number
+        minimum: 0.0
+        maximum: 1.0
+      window_hours:
+        type: integer
+        minimum: 1
+      slot_minutes:
+        type: integer
+        minimum: 1
+      allowed_slots:
+        type: integer
+        minimum: 0
+      spent_slots:
+        type: integer
+        minimum: 0
+    additionalProperties: false
+  worker:
+    type: object
+    properties:
+      id:
+        type: string
+        minLength: 1
+      multiple_workers:
+        type: boolean
+    additionalProperties: false
+  available_capabilities:
+    type: array
+    uniqueItems: true
+    items:
+      type: string
+      minLength: 1
+  todos:
+    type: array
+    items:
+      $ref: "#/$defs/todo"
+  todos_truncated:
+    type: boolean
+  previous_slice:
+    type: [object, "null"]
+    properties:
+      slice_id:
+        type: string
+      todo_id:
+        type: string
+      writeback_complete:
+        type: boolean
+      validated:
+        type: boolean
+      evidence_refs:
+        type: array
+        items:
+          type: string
+      quota_spent:
+        type: boolean
+      quota_spend_id:
+        type: string
+        pattern: "^spend-[a-f0-9]{24}$"
+      orchestrated:
+        type: boolean
     additionalProperties: false
   continuation:
     type: [object, "null"]
@@ -159,6 +257,20 @@ properties:
         type: integer
         minimum: 0
     additionalProperties: false
+  orchestration:
+    type: [object, "null"]
+    properties:
+      active_ticket_id:
+        type: [string, "null"]
+        pattern: "^ticket-[a-f0-9]{24}$"
+      last_quota_spend_id:
+        type: [string, "null"]
+        pattern: "^spend-[a-f0-9]{24}$"
+      required_next_action:
+        type: [string, "null"]
+      last_status:
+        enum: [ok, blocked, invalid_request]
+    additionalProperties: false
   memory_projection:
     type: [object, "null"]
     properties:
@@ -166,6 +278,10 @@ properties:
         type: string
       highest_layer:
         enum: [L0_raw_evidence, L1_atom, L2_scenario, L3_reusable_candidate]
+      memory_ids:
+        type: array
+        items:
+          type: string
       raw_evidence_refs:
         type: array
         items:
@@ -173,10 +289,7 @@ properties:
     additionalProperties: false
   budget:
     type: object
-    required:
-      - tool_calls
-      - file_reads
-      - node_attempts
+    required: [tool_calls, file_reads, node_attempts]
     properties:
       input_tokens:
         type: integer
@@ -196,6 +309,10 @@ properties:
       node_attempts:
         type: integer
         minimum: 0
+      remaining:
+        type: boolean
+      reason:
+        type: [string, "null"]
   next_action:
     type: [object, "null"]
   human_decision_required:
@@ -203,3 +320,34 @@ properties:
     items:
       type: string
 additionalProperties: false
+$defs:
+  todo:
+    type: object
+    required: [id]
+    properties:
+      id:
+        type: string
+        minLength: 1
+      status:
+        enum: [unclaimed, claimed, running, waiting, completed, blocked]
+      task_class:
+        enum: [advancement_task, continuous_monitor]
+      required_capabilities:
+        type: array
+        uniqueItems: true
+        items:
+          type: string
+          minLength: 1
+      lease:
+        type: [object, "null"]
+        properties:
+          id:
+            type: string
+          owner:
+            type: string
+          claimed_at:
+            type: string
+          expires_at:
+            type: string
+        additionalProperties: false
+    additionalProperties: true
