@@ -3,19 +3,28 @@ name: Validate Execution Contracts
 on:
   pull_request:
     paths:
+      - "AGENTS.md"
       - "policies/**"
       - "schemas/**"
-      - "workflow-templates/**"
+      - "skills/unity-graph-engineering/**"
+      - "Tools/ExecutionPolicyValidator/**"
+      - "Tests/**"
       - "tests/**"
+      - "workflow-templates/**"
       - ".github/workflows/validate-execution-contracts.yml"
   push:
     branches:
       - main
     paths:
+      - "AGENTS.md"
       - "policies/**"
       - "schemas/**"
-      - "workflow-templates/**"
+      - "skills/unity-graph-engineering/**"
+      - "Tools/ExecutionPolicyValidator/**"
+      - "Tests/**"
       - "tests/**"
+      - "workflow-templates/**"
+      - ".github/workflows/validate-execution-contracts.yml"
 
 jobs:
   validate:
@@ -38,21 +47,31 @@ jobs:
           from pathlib import Path
           import yaml
 
-          roots = [Path('policies'), Path('schemas'), Path('workflow-templates'), Path('tests')]
+          roots = [Path('policies'), Path('schemas'), Path('workflow-templates'), Path('tests'), Path('Tests')]
           paths = []
           for root in roots:
-              paths.extend(sorted(root.rglob('*.yaml')))
+              if root.exists():
+                  paths.extend(sorted(root.rglob('*.yaml')))
           for path in paths:
               with path.open(encoding='utf-8') as stream:
                   yaml.safe_load(stream)
               print(f'validated: {path}')
           PY
 
+      - name: Validate execution policy coherence
+        run: python Tools/ExecutionPolicyValidator/validate_execution_policies.py
+
       - name: Assert required contract files
         run: |
           test -f policies/contract-routing.yaml
           test -f policies/evidence-admission.yaml
+          test -f policies/external-providers.yaml
+          test -f policies/continuation-control.yaml
+          test -f policies/memory-layering.yaml
           test -f schemas/capability-manifest.schema.yaml
           test -f schemas/execution-state.schema.yaml
+          test -f schemas/continuation-state.schema.yaml
+          test -f schemas/memory-layer.schema.yaml
           test -f workflow-templates/verified-mutation.yaml
           test -f tests/contract-routing-cases.yaml
+          test -f Tests/ExternalProviders/cases.yaml
