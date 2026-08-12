@@ -1,12 +1,14 @@
-schema_version: "1.0"
+schema_version: "1.1"
 inspired_by: TencentCloud/TencentDB-Agent-Memory
 authority: Unity-Graph-Engineering native contract
 external_runtime_required: false
+implementation: Tools/LayeredMemoryController/layered_memory_controller.py
 
 purpose:
   - reduce repeated tool-output context
   - preserve drill-down traceability to raw evidence
   - separate transient execution memory from reusable knowledge
+  - bound how much remembered material enters the active context
 
 invariants:
   raw_evidence_required: true
@@ -16,6 +18,45 @@ invariants:
   auto_update_user_policy: false
   auto_promote_unverified_memory_to_knowledge: false
   secret_capture_forbidden: true
+  controller_writes_external_authority: false
+  silent_overwrite_forbidden: true
+
+native_controller:
+  operations:
+    - capture_raw
+    - create_atom
+    - create_scenario
+    - create_candidate
+    - retrieve
+    - drilldown
+    - project
+    - promote
+  request_transport: utf8_json_file
+  output: normalized_json_envelope
+  dependencies: python_stdlib_only
+
+storage:
+  raw_evidence: Evidence/raw/
+  l0_metadata: STATE/memory/L0/
+  l1_atoms: STATE/memory/L1/
+  l2_scenarios: STATE/memory/L2/
+  l3_candidates: STATE/memory/L3/
+  event_journal: STATE/memory/events.jsonl
+  event_journal_append_only: true
+  atomic_record_write: true
+
+capture:
+  max_raw_bytes: 2097152
+  utf8_text_only: true
+  sha256_required: true
+  same_id_same_digest_is_idempotent: true
+  same_id_different_digest_is_blocked: true
+  team_safe_scope_guard_before_source_read: true
+  team_safe_allowed_scopes:
+    - portable_artifact
+    - public_reference
+  common_secret_pattern_guard: true
+  sensitivity_secret_is_blocked: true
 
 layers:
   L0_raw_evidence:
@@ -31,36 +72,58 @@ layers:
   L1_atom:
     role: one_verified_or_scoped_observation
     requires:
-      - atom_id
+      - memory_id
       - statement
       - raw_refs
       - confidence
+    required_reference_layer: L0_raw_evidence
 
   L2_scenario:
     role: reusable_execution_pattern_or_failure_context
     requires:
-      - scenario_id
+      - memory_id
       - atom_refs
       - applicability
       - limits
+    required_reference_layer: L1_atom
 
   L3_reusable_candidate:
     role: candidate_for_cross_run_knowledge_or_skill
     requires:
+      - memory_id
       - scenario_refs
       - provenance
       - promotion_target
       - review_status
+    required_reference_layer: L2_scenario
 
 short_term_projection:
   allowed_formats:
+    - json
     - yaml
     - markdown
     - mermaid
-  source_of_truth: STATE/current.yaml
+  source_of_truth:
+    - STATE/current.yaml
+    - Evidence/raw/
+    - STATE/memory/
   purpose: compact_context_projection
   drill_down_key: evidence_or_memory_id
   full_tool_output_in_prompt_by_default: false
+  raw_content_in_projection: false
+
+retrieval:
+  load_top_layer_first: true
+  drill_down_only_when_needed: true
+  prefer_same_repository_version_platform: true
+  never_treat_memory_as_runtime_proof_without_evidence: true
+  strategy: layer_weighted_lexical_then_context_affinity
+  default_max_items: 8
+  hard_max_items: 20
+  default_max_characters: 6000
+  hard_max_characters: 12000
+  raw_content_included_by_default: false
+  raw_content_requires_explicit_drilldown: true
 
 promotion:
   transient_to_atom:
@@ -69,19 +132,21 @@ promotion:
     requires_repeated_or_generalizable_signal: true
   scenario_to_reusable_candidate:
     requires_provenance: true
+  candidate_to_execution_reference:
+    requires_review_approved: true
   candidate_to_unityagent_knowledge:
     requires_verification: true
+    controller_writes_target: false
   candidate_to_user_policy:
+    requires_verification: true
     requires_human_gate: true
     automatic_promotion: false
+    controller_writes_target: false
 
 retention:
   keep_raw_when_summary_exists: true
   supersede_instead_of_silent_overwrite: true
   conflict_must_preserve_both_sides_until_resolved: true
-
-retrieval:
-  load_top_layer_first: true
-  drill_down_only_when_needed: true
-  prefer_same_repository_version_platform: true
-  never_treat_memory_as_runtime_proof_without_evidence: true
+  relation_fields:
+    - supersedes
+    - conflicts_with
