@@ -1,14 +1,7 @@
 $schema: "https://json-schema.org/draft/2020-12/schema"
 title: Unity Graph Execution Orchestration Result
 type: object
-required:
-  - schema_version
-  - controller
-  - operation
-  - status
-  - ready_for_execution
-  - diagnostics
-  - authority
+required: [schema_version, controller, operation, status, ready_for_execution, diagnostics, authority]
 properties:
   schema_version:
     type: string
@@ -63,11 +56,14 @@ properties:
       schema_version:
         type: string
       goal_id:
-        type: [string, "null"]
+        type: string
+        minLength: 1
       selected_todo_id:
-        type: [string, "null"]
+        type: string
+        minLength: 1
       worker_id:
         type: string
+        minLength: 1
       execution_profile:
         enum: [generic_planning, personal_full_control, team_safe_import]
       work_kind:
@@ -98,6 +94,21 @@ properties:
       ticket_digest:
         type: string
         pattern: "^[a-f0-9]{64}$"
+    allOf:
+      - if:
+          properties:
+            work_kind:
+              const: mutation
+        then:
+          properties:
+            source_verification:
+              properties:
+                completed:
+                  const: true
+                paths:
+                  minItems: 1
+                evidence_refs:
+                  minItems: 1
     additionalProperties: false
   evidence:
     type: [object, "null"]
@@ -142,6 +153,19 @@ properties:
           spent_slots:
             type: [integer, "null"]
             minimum: 0
+        additionalProperties: false
+      orchestration:
+        type: object
+        properties:
+          active_ticket_id:
+            type: [string, "null"]
+          last_quota_spend_id:
+            type: string
+            pattern: "^spend-[a-f0-9]{24}$"
+          required_next_action:
+            type: string
+          last_status:
+            enum: [ok, blocked, invalid_request]
         additionalProperties: false
       memory_projection:
         type: object
