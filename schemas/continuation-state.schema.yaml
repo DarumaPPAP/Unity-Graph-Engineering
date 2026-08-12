@@ -1,0 +1,129 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: Unity Graph Continuation Decision
+type: object
+required:
+  - schema_version
+  - controller
+  - status
+  - decision
+  - should_run
+  - lane
+  - reason_code
+  - reason
+  - quota
+properties:
+  schema_version:
+    type: string
+  controller:
+    const: native_continuation
+  status:
+    enum: [ok, invalid_transition, invalid_request]
+  decision:
+    enum: [run, ask_human, wait, blocked, complete]
+  should_run:
+    type: boolean
+  lane:
+    enum: [health_gate, human_gate, evidence_wait, focus_wait, budget_guard, compute_quota, bounded_work, complete]
+  reason_code:
+    type: string
+  reason:
+    type: string
+  effective_action:
+    type: string
+  must_attempt_work:
+    type: boolean
+  normal_delivery_allowed:
+    type: boolean
+  selected_todo:
+    type: [object, "null"]
+  runnable_candidates:
+    type: array
+    items:
+      $ref: "#/$defs/candidate"
+  blocked_candidates:
+    type: array
+    items:
+      $ref: "#/$defs/candidate"
+  capability_gate:
+    type: [object, "null"]
+    properties:
+      action:
+        enum: [run, repair_bridge, ask_owner, skip]
+      required:
+        type: array
+        items:
+          type: string
+      missing:
+        type: array
+        items:
+          type: string
+      runnable_candidates:
+        type: array
+      blocked_candidates:
+        type: array
+    additionalProperties: false
+  quota:
+    type: object
+    required:
+      - compute_share
+      - window_hours
+      - slot_minutes
+      - allowed_slots
+      - spent_slots
+      - eligible
+      - state
+      - reason
+    properties:
+      compute_share:
+        type: number
+        minimum: 0.0
+        maximum: 1.0
+      window_hours:
+        type: integer
+        minimum: 1
+      slot_minutes:
+        type: integer
+        minimum: 1
+      allowed_slots:
+        type: integer
+        minimum: 0
+      spent_slots:
+        type: integer
+        minimum: 0
+      eligible:
+        type: boolean
+      state:
+        enum: [eligible, throttled, paused]
+      reason:
+        type: string
+    additionalProperties: false
+  diagnostics:
+    type: array
+    items:
+      type: object
+additionalProperties: false
+$defs:
+  candidate:
+    type: object
+    required:
+      - todo_id
+      - task_class
+      - lease_state
+      - required_capabilities
+      - missing_capabilities
+    properties:
+      todo_id:
+        type: string
+      task_class:
+        enum: [advancement_task, continuous_monitor]
+      lease_state:
+        enum: [free, expired, owned_by_self, owned_by_other]
+      required_capabilities:
+        type: array
+        items:
+          type: string
+      missing_capabilities:
+        type: array
+        items:
+          type: string
+    additionalProperties: false

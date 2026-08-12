@@ -1,0 +1,179 @@
+schema_version: "1.1"
+authority: Unity-Graph-Engineering native control-plane contract
+implementation: Tools/ExecutionOrchestrator/execution_orchestrator.py
+
+purpose:
+  - compose continuation, optional code intelligence, layered memory, and evidence accounting
+  - prevent controller-order drift
+  - provide a deterministic prepare/finalize handshake for one bounded slice
+
+invariants:
+  graph_loop_only: true
+  orchestrator_owns_source_mutation: false
+  orchestrator_owns_state_current: false
+  orchestrator_owns_human_gate: false
+  orchestrator_owns_quota_policy: false
+  arbitrary_command_passthrough: false
+  child_process_shell: false
+  one_prepare_ticket_one_selected_todo: true
+  selected_todo_required_for_ticket: true
+  one_finalize_one_slice: true
+  mutation_requires_direct_source_read: true
+  mutation_source_verification_requires_evidence_ref: true
+  source_paths_in_ticket_must_be_workspace_relative: true
+  multiple_worker_claim_requires_durable_writeback_before_work: true
+  evidence_must_be_durable_before_quota_spend: true
+  quota_spend_requires_validated_writeback: true
+  finalize_must_be_idempotent_after_quota_spent: true
+  stale_state_preserves_evidence_but_blocks_accounting: true
+  ticket_integrity_required: true
+  path_escape_forbidden: true
+  team_safe_ix_probe_forbidden: true
+  generic_planning_ix_probe_forbidden: true
+  non_personal_project_internal_memory_forbidden: true
+
+prepare_order:
+  - validate_execution_mode_profile_and_goal
+  - continuation_evaluate
+  - stop_if_health_human_evidence_focus_budget_or_quota_blocks
+  - require_concrete_selected_todo
+  - multiple_worker_claim_check
+  - require_claim_state_writeback_when_new_or_expired_claim_is_projected
+  - optional_bounded_memory_projection
+  - optional_ix_navigation_for_personal_full_control_only
+  - direct_source_verification
+  - issue_integrity_bound_execution_ticket
+
+short_circuit:
+  when_continuation_should_run_false:
+    call_memory: false
+    call_ix: false
+    issue_ticket: false
+  when_selected_todo_missing:
+    call_memory: false
+    call_ix: false
+    issue_ticket: false
+    action: materialize_advancement_todo_or_blocker
+  when_claim_not_durable:
+    call_memory: false
+    call_ix: false
+    issue_ticket: false
+
+code_intelligence:
+  provider: ix
+  allowed_profile: personal_full_control
+  optional: true
+  failure_behavior: targeted_source_read_fallback
+  low_confidence_is_fact: false
+  destructive_operations_exposed: false
+  preflight_operations: [explain, impact, trace, callers, callees]
+  trace_bounds:
+    max_depth: 5
+    max_nodes: 200
+
+memory_context:
+  optional: true
+  empty_query_broad_load_forbidden: true
+  max_items: 8
+  max_characters: 6000
+  raw_content_allowed_in_prepare: false
+  failure_behavior: continue_without_memory_context
+  contract_breach_behavior: block
+  non_personal_allowed_scopes: [portable_artifact, public_reference]
+
+source_verification:
+  mutation_required: true
+  explicit_paths_only: true
+  paths_must_resolve_inside_workspace: true
+  ticket_paths_are_workspace_relative: true
+  completed_requires_at_least_one_path: true
+  mutation_requires_at_least_one_evidence_ref: true
+  non_personal_allowed_scopes: [portable_artifact, public_reference]
+
+execution_ticket:
+  deterministic_for_same_state: true
+  selected_todo_nullable: false
+  binds:
+    - goal_id
+    - selected_todo_id
+    - worker_id
+    - execution_profile
+    - work_kind
+    - state_fingerprint
+    - source_verification
+  digest: sha256_canonical_json
+  tamper_behavior: block
+  stale_state_behavior: preserve_evidence_then_block_accounting
+  grants_arbitrary_mutation: false
+  grants_only: one_bounded_slice_under_bound_state
+
+finalize_order:
+  - verify_ticket_integrity_and_identity
+  - require_slice_writeback_complete
+  - require_slice_validated
+  - confine_evidence_file_to_workspace
+  - enforce_evidence_scope
+  - capture_l0_raw_evidence
+  - optionally_create_l1_atom
+  - detect_duplicate_or_conflicting_accounting
+  - compare_authoritative_state_fingerprint
+  - project_quota_spend
+  - return_required_state_writeback
+
+finalize_failure_semantics:
+  evidence_capture_failed:
+    quota_spend: forbidden
+    next_action: resolve_evidence_capture
+  atom_creation_failed:
+    raw_evidence_retained: true
+    quota_spend: forbidden
+    next_action: resolve_memory_atom
+  stale_execution_state:
+    raw_evidence_retained: true
+    quota_spend: forbidden
+    state_accounting_patch_returned: false
+    next_action: reprepare_from_authoritative_state
+  quota_spend_failed:
+    raw_evidence_retained: true
+    state_quota_patch_returned: false
+    next_action: resolve_quota_accounting
+
+idempotency:
+  key: previous_slice.slice_id
+  accounting_marker: previous_slice.quota_spent
+  accounting_id: previous_slice.quota_spend_id
+  repeated_finalize_after_accounting:
+    recapture_evidence_idempotently: true
+    spend_delta: 0
+  conflicting_accounted_slice:
+    preserve_new_evidence: true
+    quota_spend: forbidden
+    next_action: reprepare_from_authoritative_state
+
+state_writeback:
+  caller_is_authority: true
+  orchestrator_direct_write: false
+  prepare_may_require:
+    - todo_claim_and_lease
+  finalize_requires_writeback_of:
+    - previous_slice.slice_id
+    - previous_slice.todo_id
+    - previous_slice.writeback_complete
+    - previous_slice.validated
+    - previous_slice.evidence_refs
+    - previous_slice.quota_spent
+    - previous_slice.quota_spend_id
+    - previous_slice.orchestrated
+    - quota.spent_slots
+    - orchestration.last_quota_spend_id
+    - memory_projection
+
+controller_isolation:
+  invocation: fixed_python_cli_contracts
+  stdin_json_for_state_and_memory_requests: true
+  temp_request_file_required: false
+  expected_identity_required: true
+  malformed_json_behavior: block
+  identity_mismatch_behavior: block
+  timeout_behavior: block
+  shell_false_required: true

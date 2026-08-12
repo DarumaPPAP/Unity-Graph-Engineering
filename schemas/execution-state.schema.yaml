@@ -1,15 +1,7 @@
 $schema: "https://json-schema.org/draft/2020-12/schema"
 title: Unity AI Execution State
 type: object
-required:
-  - run_id
-  - execution_mode
-  - execution_profile
-  - task_contract_id
-  - status
-  - goal
-  - quality_gates
-  - budget
+required: [run_id, execution_mode, execution_profile, task_contract_id, status, goal, quality_gates, budget]
 properties:
   run_id:
     type: string
@@ -26,8 +18,7 @@ properties:
     type: [string, "null"]
   related_knowledge_ids:
     type: array
-    items:
-      type: string
+    items: {type: string}
   mode_selection_source:
     enum: [default, explicit, approved_escalation]
   profile_selection_source:
@@ -45,78 +36,204 @@ properties:
     enum: [intake, ready, running, rejected, blocked, awaiting_human, accepted]
   goal:
     type: array
-    items:
-      type: string
+    items: {type: string}
+  goal_id:
+    type: string
+    minLength: 1
+  goal_complete:
+    type: boolean
   confirmed_facts:
     type: array
-    items:
-      type: string
+    items: {type: string}
   unresolved_project_bindings:
     type: array
     items:
       type: object
-      required:
-        - id
-        - resolution
+      required: [id, resolution]
       properties:
-        id:
-          type: string
+        id: {type: string}
         resolution:
           enum: [resolve_during_import, resolve_before_mutation, human_selection]
-        guessed:
-          const: false
+        guessed: {const: false}
       additionalProperties: false
   rejected_hypotheses:
     type: array
-    items:
-      type: string
+    items: {type: string}
   active_hypothesis:
     type: [object, "null"]
     properties:
-      id:
-        type: string
-      statement:
-        type: string
+      id: {type: string}
+      statement: {type: string}
   artifacts:
     type: array
-    items:
-      type: string
+    items: {type: string}
   quality_gates:
     type: array
     items:
       type: object
-      required:
-        - gate
-        - status
+      required: [gate, status]
       properties:
-        gate:
-          type: string
-        status:
-          enum: [passed, failed, unavailable]
-        evidence_id:
-          type: [string, "null"]
-        reason:
-          type: [string, "null"]
+        gate: {type: string}
+        status: {enum: [passed, failed, unavailable]}
+        evidence_id: {type: [string, "null"]}
+        reason: {type: [string, "null"]}
         remaining_validation:
           type: array
-          items:
-            type: string
+          items: {type: string}
       additionalProperties: false
   last_evidence:
     type: [object, "null"]
     properties:
-      evidence_id:
+      evidence_id: {type: string}
+      verdict: {enum: [APPROVE, REJECT, ESCALATE_HUMAN, NOT_RUN]}
+      summary: {type: string}
+  external_context:
+    type: object
+    properties:
+      code_intelligence_provider: {enum: [none, ix]}
+      provider_revision: {type: [string, "null"]}
+      structural_evidence_ids:
+        type: array
+        items: {type: string}
+    additionalProperties: false
+  health:
+    type: object
+    required: [ok]
+    properties:
+      ok: {type: boolean}
+      reason: {type: [string, "null"]}
+    additionalProperties: false
+  human_gate:
+    type: object
+    required: [required, satisfied]
+    properties:
+      required: {type: boolean}
+      satisfied: {type: boolean}
+      reason: {type: [string, "null"]}
+    additionalProperties: false
+  evidence_wait:
+    type: object
+    required: [waiting]
+    properties:
+      waiting: {type: boolean}
+      reason: {type: [string, "null"]}
+    additionalProperties: false
+  focus_wait:
+    type: object
+    required: [waiting]
+    properties:
+      waiting: {type: boolean}
+      reason: {type: [string, "null"]}
+    additionalProperties: false
+  quota:
+    type: object
+    required: [compute_share, allowed_slots, spent_slots]
+    properties:
+      compute_share:
+        type: number
+        minimum: 0.0
+        maximum: 1.0
+      window_hours:
+        type: integer
+        minimum: 1
+      slot_minutes:
+        type: integer
+        minimum: 1
+      allowed_slots:
+        type: integer
+        minimum: 0
+      spent_slots:
+        type: integer
+        minimum: 0
+    additionalProperties: false
+  worker:
+    type: object
+    required: [id, multiple_workers]
+    properties:
+      id:
         type: string
-      verdict:
-        enum: [APPROVE, REJECT, ESCALATE_HUMAN, NOT_RUN]
-      summary:
+        minLength: 1
+      multiple_workers: {type: boolean}
+    additionalProperties: false
+  available_capabilities:
+    type: array
+    uniqueItems: true
+    items:
+      type: string
+      minLength: 1
+  todos:
+    type: array
+    items: {$ref: "#/$defs/todo"}
+  todos_truncated:
+    type: boolean
+  previous_slice:
+    type: [object, "null"]
+    properties:
+      slice_id: {type: string}
+      todo_id: {type: string}
+      writeback_complete: {type: boolean}
+      validated: {type: boolean}
+      evidence_refs:
+        type: array
+        items: {type: string}
+      quota_spent: {type: boolean}
+      quota_spend_id:
         type: string
+        pattern: "^spend-[a-f0-9]{24}$"
+      orchestrated: {type: boolean}
+    additionalProperties: false
+  continuation:
+    type: [object, "null"]
+    properties:
+      controller: {const: native_continuation}
+      decision: {enum: [run, ask_human, wait, blocked, complete]}
+      should_run: {type: boolean}
+      lane: {enum: [health_gate, human_gate, evidence_wait, focus_wait, budget_guard, compute_quota, bounded_work, complete]}
+      reason_code: {type: string}
+      reason: {type: string}
+      effective_action: {type: string}
+      must_attempt_work: {type: boolean}
+      normal_delivery_allowed: {type: boolean}
+      writeback_complete: {type: boolean}
+      todo_id: {type: [string, "null"]}
+      compute_share:
+        type: number
+        minimum: 0.0
+        maximum: 1.0
+      allowed_slots:
+        type: integer
+        minimum: 0
+      spent_slots:
+        type: integer
+        minimum: 0
+    additionalProperties: false
+  orchestration:
+    type: [object, "null"]
+    properties:
+      active_ticket_id:
+        type: [string, "null"]
+        pattern: "^ticket-[a-f0-9]{24}$"
+      last_quota_spend_id:
+        type: [string, "null"]
+        pattern: "^spend-[a-f0-9]{24}$"
+      required_next_action: {type: [string, "null"]}
+      last_status: {enum: [ok, blocked, invalid_request]}
+    additionalProperties: false
+  memory_projection:
+    type: [object, "null"]
+    properties:
+      projection_id: {type: string}
+      highest_layer: {enum: [L0_raw_evidence, L1_atom, L2_scenario, L3_reusable_candidate]}
+      memory_ids:
+        type: array
+        items: {type: string}
+      raw_evidence_refs:
+        type: array
+        items: {type: string}
+    additionalProperties: false
   budget:
     type: object
-    required:
-      - tool_calls
-      - file_reads
-      - node_attempts
+    required: [tool_calls, file_reads, node_attempts]
     properties:
       input_tokens:
         type: integer
@@ -136,10 +253,57 @@ properties:
       node_attempts:
         type: integer
         minimum: 0
+      remaining: {type: boolean}
+      reason: {type: [string, "null"]}
   next_action:
     type: [object, "null"]
   human_decision_required:
     type: array
-    items:
-      type: string
+    items: {type: string}
+allOf:
+  - if:
+      properties:
+        execution_mode: {const: graph_loop}
+      required: [execution_mode]
+    then:
+      required:
+        - goal_id
+        - goal_complete
+        - health
+        - human_gate
+        - evidence_wait
+        - focus_wait
+        - quota
+        - worker
+        - available_capabilities
+        - todos
+        - todos_truncated
+      properties:
+        budget:
+          required: [remaining]
 additionalProperties: false
+$defs:
+  todo:
+    type: object
+    required: [id]
+    properties:
+      id:
+        type: string
+        minLength: 1
+      status: {enum: [unclaimed, claimed, running, waiting, completed, blocked]}
+      task_class: {enum: [advancement_task, continuous_monitor]}
+      required_capabilities:
+        type: array
+        uniqueItems: true
+        items:
+          type: string
+          minLength: 1
+      lease:
+        type: [object, "null"]
+        properties:
+          id: {type: string}
+          owner: {type: string}
+          claimed_at: {type: string}
+          expires_at: {type: string}
+        additionalProperties: false
+    additionalProperties: true

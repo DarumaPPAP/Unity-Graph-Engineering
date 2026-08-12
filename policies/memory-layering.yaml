@@ -1,0 +1,166 @@
+schema_version: "1.3"
+inspired_by: TencentCloud/TencentDB-Agent-Memory
+authority: Unity-Graph-Engineering native contract
+external_runtime_required: false
+implementation: Tools/LayeredMemoryController/layered_memory_controller.py
+
+purpose:
+  - reduce repeated tool-output context
+  - preserve drill-down traceability to raw evidence
+  - separate transient execution memory from reusable knowledge
+  - bound how much remembered material enters active context
+  - prevent project-internal memory from being read by non-personal profiles
+
+invariants:
+  raw_evidence_required: true
+  irreversible_summary_only_storage_forbidden: true
+  high_level_memory_must_reference_lower_level_evidence: true
+  symbolic_projection_is_not_source_of_truth: true
+  auto_update_user_policy: false
+  auto_promote_unverified_memory_to_knowledge: false
+  secret_capture_forbidden: true
+  controller_writes_external_authority: false
+  silent_overwrite_forbidden: true
+  scope_downgrade_forbidden: true
+  scope_propagation_required: true
+  non_personal_project_internal_read_forbidden: true
+  non_personal_full_memory_scan_forbidden: true
+  unindexed_record_fails_closed: true
+
+native_controller:
+  operations: [capture_raw, create_atom, create_scenario, create_candidate, retrieve, drilldown, project, promote]
+  request_transport: [utf8_json_file, stdin_json]
+  output: normalized_json_envelope
+  dependencies: python_stdlib_only
+
+storage:
+  raw_evidence: Evidence/raw/
+  l0_metadata: STATE/memory/L0/
+  l1_atoms: STATE/memory/L1/
+  l2_scenarios: STATE/memory/L2/
+  l3_candidates: STATE/memory/L3/
+  safe_index: STATE/memory/safe-index.jsonl
+  event_journal: STATE/memory/events.jsonl
+  event_journal_append_only: true
+  atomic_record_write: true
+  runtime_storage_git_ignored: true
+
+safe_index:
+  purpose: allow_non_personal_retrieval_without_opening_internal_memory_records
+  contains_project_internal_records: false
+  allowed_scopes: [portable_artifact, public_reference]
+  fields: [memory_id, layer, scope_class]
+  statement_or_raw_content_forbidden: true
+  non_personal_retrieval_source: safe_index_only
+  non_personal_drilldown_requires_index_membership: true
+  unindexed_record_semantics: project_internal_fail_closed
+  corrupt_or_conflicting_index_behavior: block
+  missing_index_behavior: empty_safe_memory_set
+
+scope_model:
+  classes:
+    public_reference:
+      rank: 0
+      readable_by: [generic_planning, personal_full_control, team_safe_import]
+    portable_artifact:
+      rank: 1
+      readable_by: [generic_planning, personal_full_control, team_safe_import]
+    project_internal:
+      rank: 2
+      readable_by: [personal_full_control]
+  higher_layer_inherits_most_restrictive_parent_scope: true
+  caller_may_make_scope_more_restrictive: true
+  caller_may_make_scope_less_restrictive: false
+  legacy_record_without_scope: project_internal
+  generic_planning_allowed_scopes: [portable_artifact, public_reference]
+  team_safe_allowed_scopes: [portable_artifact, public_reference]
+
+capture:
+  max_raw_bytes: 2097152
+  utf8_text_only: true
+  sha256_required: true
+  same_id_same_digest_is_idempotent: true
+  same_id_different_digest_is_blocked: true
+  non_personal_scope_guard_before_source_read: true
+  common_secret_pattern_guard: true
+  sensitivity_secret_is_blocked: true
+  safe_record_must_be_indexed: true
+
+layers:
+  L0_raw_evidence:
+    role: lossless_or_source_faithful_execution_artifact
+    examples: [tool_output, compiler_log, test_result, diff, profiler_result]
+    storage: Evidence/raw/
+    requires_scope: true
+  L1_atom:
+    role: one_verified_or_scoped_observation
+    requires: [memory_id, statement, raw_refs, confidence, scope_class]
+    required_reference_layer: L0_raw_evidence
+    scope: inherit_most_restrictive_parent
+  L2_scenario:
+    role: reusable_execution_pattern_or_failure_context
+    requires: [memory_id, atom_refs, applicability, limits, scope_class]
+    required_reference_layer: L1_atom
+    scope: inherit_most_restrictive_parent
+  L3_reusable_candidate:
+    role: candidate_for_cross_run_knowledge_or_skill
+    requires: [memory_id, scenario_refs, provenance, promotion_target, review_status, scope_class]
+    required_reference_layer: L2_scenario
+    scope: inherit_most_restrictive_parent
+
+short_term_projection:
+  allowed_formats: [json, yaml, markdown, mermaid]
+  source_of_truth: [STATE/current.yaml, Evidence/raw/, STATE/memory/]
+  purpose: compact_context_projection
+  drill_down_key: evidence_or_memory_id
+  full_tool_output_in_prompt_by_default: false
+  raw_content_in_projection: false
+
+retrieval:
+  access_filter_before_ranking: true
+  non_personal_reads_safe_index_before_record_files: true
+  non_personal_unindexed_record_open_forbidden: true
+  load_top_layer_first: true
+  drill_down_only_when_needed: true
+  prefer_same_repository_version_platform: true
+  never_treat_memory_as_runtime_proof_without_evidence: true
+  strategy: safe_index_then_layer_weighted_lexical_context_affinity
+  default_max_items: 8
+  hard_max_items: 20
+  default_max_characters: 6000
+  hard_max_characters: 12000
+  raw_content_included_by_default: false
+  raw_content_requires_explicit_drilldown: true
+  filtered_record_ids_are_not_returned: true
+  internal_record_count_not_required_for_non_personal: true
+
+drilldown:
+  access_check_each_layer: true
+  non_personal_requires_safe_index_membership_before_record_read: true
+  raw_content_default: false
+  raw_content_requires_explicit_flag: true
+  raw_paths_must_remain_under_evidence_raw: true
+
+promotion:
+  transient_to_atom:
+    requires_evidence: true
+  atom_to_scenario:
+    requires_repeated_or_generalizable_signal: true
+  scenario_to_reusable_candidate:
+    requires_provenance: true
+  candidate_to_execution_reference:
+    requires_review_approved: true
+  candidate_to_unityagent_knowledge:
+    requires_verification: true
+    controller_writes_target: false
+  candidate_to_user_policy:
+    requires_verification: true
+    requires_human_gate: true
+    automatic_promotion: false
+    controller_writes_target: false
+
+retention:
+  keep_raw_when_summary_exists: true
+  supersede_instead_of_silent_overwrite: true
+  conflict_must_preserve_both_sides_until_resolved: true
+  relation_fields: [supersedes, conflicts_with]

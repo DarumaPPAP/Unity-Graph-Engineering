@@ -1,0 +1,129 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: Unity Graph Execution Ticket
+type: object
+required:
+  - schema_version
+  - goal_id
+  - selected_todo_id
+  - worker_id
+  - execution_profile
+  - work_kind
+  - state_fingerprint
+  - source_verification
+  - ticket_id
+  - ticket_digest
+properties:
+  schema_version:
+    type: string
+  goal_id:
+    type: string
+    minLength: 1
+  selected_todo_id:
+    type: string
+    minLength: 1
+  worker_id:
+    type: string
+    minLength: 1
+  execution_profile:
+    enum: [generic_planning, personal_full_control, team_safe_import]
+  work_kind:
+    enum: [mutation, verification, analysis, portable_import]
+  state_fingerprint:
+    type: string
+    pattern: "^[a-f0-9]{64}$"
+  source_verification:
+    type: object
+    required: [completed, scope_class, paths, evidence_refs]
+    properties:
+      completed:
+        type: boolean
+      scope_class:
+        enum: [project_internal, portable_artifact, public_reference]
+      paths:
+        type: array
+        items:
+          type: string
+      evidence_refs:
+        type: array
+        items:
+          type: string
+    additionalProperties: false
+  ticket_id:
+    type: string
+    pattern: "^ticket-[a-f0-9]{24}$"
+  ticket_digest:
+    type: string
+    pattern: "^[a-f0-9]{64}$"
+allOf:
+  - if:
+      properties:
+        execution_profile:
+          const: generic_planning
+      required: [execution_profile]
+    then:
+      properties:
+        work_kind:
+          enum: [analysis, verification]
+        source_verification:
+          properties:
+            paths:
+              maxItems: 0
+  - if:
+      properties:
+        execution_profile:
+          const: personal_full_control
+      required: [execution_profile]
+    then:
+      properties:
+        work_kind:
+          enum: [analysis, verification, mutation]
+  - if:
+      properties:
+        execution_profile:
+          const: team_safe_import
+      required: [execution_profile]
+    then:
+      properties:
+        work_kind:
+          enum: [analysis, verification, portable_import]
+        source_verification:
+          properties:
+            paths:
+              maxItems: 0
+  - if:
+      properties:
+        work_kind:
+          const: mutation
+      required: [work_kind]
+    then:
+      properties:
+        execution_profile:
+          const: personal_full_control
+        source_verification:
+          properties:
+            completed:
+              const: true
+            paths:
+              minItems: 1
+            evidence_refs:
+              minItems: 1
+  - if:
+      properties:
+        work_kind:
+          const: portable_import
+      required: [work_kind]
+    then:
+      properties:
+        execution_profile:
+          const: team_safe_import
+        source_verification:
+          properties:
+            completed:
+              const: true
+            scope_class:
+              const: portable_artifact
+            paths:
+              maxItems: 0
+            evidence_refs:
+              minItems: 1
+additionalProperties: false

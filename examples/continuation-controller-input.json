@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0",
+  "goal_id": "renderer-migration",
+  "execution_mode": "graph_loop",
+  "goal_complete": false,
+  "health": {
+    "ok": true
+  },
+  "human_gate": {
+    "required": false,
+    "satisfied": true
+  },
+  "evidence_wait": {
+    "waiting": false
+  },
+  "focus_wait": {
+    "waiting": false
+  },
+  "budget": {
+    "remaining": true
+  },
+  "quota": {
+    "compute_share": 1.0,
+    "window_hours": 24,
+    "slot_minutes": 1,
+    "spent_slots": 0
+  },
+  "worker": {
+    "id": "maker-a",
+    "multiple_workers": true
+  },
+  "available_capabilities": [
+    "shell",
+    "filesystem_read",
+    "filesystem_write"
+  ],
+  "previous_slice": null,
+  "todos_truncated": false,
+  "todos": [
+    {
+      "id": "inspect-renderer-feature",
+      "status": "unclaimed",
+      "task_class": "advancement_task",
+      "required_capabilities": [
+        "filesystem_read"
+      ]
+    },
+    {
+      "id": "watch-target-device-result",
+      "status": "unclaimed",
+      "task_class": "continuous_monitor",
+      "required_capabilities": []
+    }
+  ]
+}

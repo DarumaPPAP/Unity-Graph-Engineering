@@ -1,0 +1,141 @@
+schema_version: "1.0"
+policy_owner: DarumaPPAP/Unity-Graph-Engineering
+purpose: optional_external_intelligence_and_control_plane_adapters
+
+principles:
+  external_provider_required_for_planning: false
+  external_provider_required_for_mutation: false
+  auto_install: false
+  package_change_requires_human_gate: true
+  direct_source_read_required_before_mutation: true
+  provider_output_is_not_runtime_proof: true
+  provider_failure_must_fallback_when_safe: true
+  secret_capture_forbidden: true
+
+profile_rules:
+  generic_planning:
+    probe_external_providers: false
+    project_scanning: false
+    allowed_provider_roles:
+      - native_contract_only
+  personal_full_control:
+    probe_external_providers: true
+    project_scanning: explicit_scope_only
+    allowed_provider_roles:
+      - code_intelligence
+      - continuation_control
+      - layered_memory
+  team_safe_import:
+    probe_external_providers: false
+    project_scanning: false
+    prohibited_providers:
+      - ix
+      - loopx_runtime
+      - tencentdb_agent_memory_runtime
+
+providers:
+  ix:
+    source_repository: ix-infrastructure/Ix
+    license: Apache-2.0
+    role: code_intelligence
+    integration_mode: optional_cli_adapter
+    required: false
+    profiles:
+      - personal_full_control
+    adapter:
+      path: Tools/IxAdapter/ix_adapter.py
+      output: normalized_json_envelope
+      auto_install: false
+      arbitrary_command_passthrough: false
+      destructive_commands_exposed: false
+      shell_execution: false
+      allowed_operations:
+        - probe
+        - status
+        - map
+        - explain
+        - impact
+        - trace
+        - callers
+        - callees
+      trace_defaults:
+        depth: 3
+        cap_per_direction: 100
+      query_timeout_seconds: 30
+      map_timeout_seconds: 120
+      unavailable_fallback: targeted_source_read
+    capabilities:
+      - map
+      - explain
+      - trace
+      - impact
+      - callers
+      - callees
+      - dependency_search
+    activation:
+      - structural_codebase_question
+      - unfamiliar_subsystem
+      - pre_mutation_blast_radius
+      - dependency_trace
+    rules:
+      map_refresh_after_source_mutation_when_available: true
+      low_confidence_must_be_reported: true
+      direct_source_verification_before_mutation: true
+      graph_result_alone_cannot_prove_runtime_behavior: true
+      trace_must_be_bounded: true
+      reset_command_forbidden: true
+    fallback:
+      - targeted_source_read
+      - repository_search
+
+  loopx:
+    source_repository: huangruiteng/loopx
+    license: MIT
+    role: continuation_control
+    integration_mode: native_contract_reference
+    required: false
+    external_runtime_required: false
+    adopted_concepts:
+      - objective
+      - typed_todo
+      - claim
+      - lease
+      - evidence_writeback
+      - quota
+      - continuation_decision
+    authority:
+      execution_state: local_native_state
+      human_gate: local_native_policy
+      budget: local_native_policy
+
+  tencentdb_agent_memory:
+    source_repository: TencentCloud/TencentDB-Agent-Memory
+    license: MIT
+    role: layered_memory
+    integration_mode: native_contract_reference
+    required: false
+    external_runtime_required: false
+    adopted_concepts:
+      - raw_evidence_offload
+      - step_atom
+      - scenario_memory
+      - symbolic_projection
+      - progressive_disclosure
+      - drill_down_traceability
+    authority:
+      raw_evidence: repository_execution_evidence
+      execution_state: local_native_state
+      user_policy: DarumaPPAP/UnityAgent
+
+supply_chain:
+  executable_external_adapter:
+    requires:
+      - explicit_user_request_or_existing_install
+      - pinned_version_or_revision
+      - license_review
+      - capability_probe
+    auto_download_during_task: false
+  provider_state_must_not_be_committed:
+    - .loopx/
+    - .local/
+    - .codex/goals/

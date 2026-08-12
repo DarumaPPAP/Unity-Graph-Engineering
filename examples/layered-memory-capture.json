@@ -1,0 +1,12 @@
+{
+  "operation": "capture_raw",
+  "evidence_id": "compile-renderer-feature-001",
+  "source_file": "./Evidence/inbox/compile-renderer-feature-001.txt",
+  "source_type": "compiler_log",
+  "execution_profile": "personal_full_control",
+  "scope_class": "project_internal",
+  "sensitivity": "internal",
+  "repository": "DarumaPPAP/Unity-Graph-Engineering",
+  "run_id": "example-run-001",
+  "statement": "Renderer Feature compile result"
+}

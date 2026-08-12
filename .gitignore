@@ -40,5 +40,19 @@ sysinfo.txt
 *.app
 *.unitypackage
 
+# Python validation/runtime cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
 # Local graph output
 GraphData/*.json
+
+# Native execution runtime state/evidence (never commit)
+/STATE/
+/Evidence/
+
+# Optional external control-plane runtime state
+.loopx/
+.local/
+.codex/goals/

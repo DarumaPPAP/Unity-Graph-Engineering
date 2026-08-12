@@ -22,6 +22,16 @@ properties:
           enum: [available, unavailable, unknown, prohibited]
         detection:
           enum: [manual, detected, probed, policy]
+        provider:
+          enum: [native, ix, loopx, tencentdb_agent_memory, other]
+        role:
+          enum: [unity_tool, code_intelligence, continuation_control, layered_memory, validation, other]
+        external_dependency:
+          type: boolean
+        allowed_profiles:
+          type: array
+          items:
+            enum: [generic_planning, personal_full_control, team_safe_import]
         last_probe:
           type: [string, "null"]
         limitations:
