@@ -7,7 +7,7 @@ allowed-tools:
   - Edit
   - Bash
 metadata:
-  version: "2.2.0"
+  version: "2.3.0"
 ---
 
 # Unity Graph / Loop Engineering
@@ -115,14 +115,30 @@ Health Gate → Human Gate → Evidence Wait → Focus Wait → Budget → Quota
 
 ## Layered memory
 
-長いTool Outputや過去TurnをContextへ保持し続けません。
+長いTool Outputや過去Turnは、`Tools/LayeredMemoryController/layered_memory_controller.py`でEvidence-firstなLayered Memoryへ落とします。
 
-- L0 Raw Evidence
-- L1 Atom
-- L2 Scenario
-- L3 Reusable Candidate
+```text
+L0 Raw Evidence
+    ↓ raw_refs
+L1 Atom
+    ↓ atom_refs
+L2 Scenario
+    ↓ scenario_refs
+L3 Reusable Candidate
+```
 
-上位Memoryは必ずEvidenceへdrill downできるようにします。Symbolic ProjectionはContext圧縮用でありState authorityではありません。User Policyへ自動昇格しません。
+- L0 Rawは`Evidence/raw/`へSource-faithfulに保持しSHA-256を記録する
+- L1/L2/L3は`STATE/memory/`へ保存し、下位Layerへの参照を必須にする
+- 通常の`retrieve` / `project`ではRaw contentをContextへ載せない
+- 既定8件/6000文字、最大20件/12000文字でContext投入量を制限する
+- 詳細が必要な時だけ`drilldown`し、Raw content展開は明示指定時だけ行う
+- `team_safe_import`では禁止Scopeをsource read前にBlockする
+- Secret分類や高確度Credential patternはRaw Evidenceへ保存しない
+- 新旧Memoryの競合は`supersedes` / `conflicts_with`で残し、silent overwriteしない
+- `promote`はProjectionだけを返し、UnityAgent KnowledgeやUser Policyを直接変更しない
+- User Policy candidateはverified + Human Gateが必須
+
+Symbolic ProjectionはContext圧縮用でありState authorityではありません。Runtime / Visual / Performance Factが必要なら元Evidenceへdrill downします。
 
 詳細: `references/layered-memory.md`、`policies/memory-layering.yaml`
 
@@ -148,7 +164,8 @@ Input -> Action -> Observe -> Evaluate
 - Graph definition
 - `STATE/current.yaml`
 - append-only event / checkpoint
-- Evidence artifact
+- `Evidence/raw/`
+- `STATE/memory/`
 - Source / patch artifact
 
 Mode変更時は確認済み事実、棄却仮説、対象Artifact、残Budgetだけを型付きStateとして引き継ぎます。
@@ -175,6 +192,8 @@ VerifierへMakerの思考履歴全体を渡しません。Goal、Diff、対象So
 - Contract conflict: Human decisionまで停止
 - Code intelligence unavailable: targeted Source readへFallback
 - Memory projection broken: Raw Evidenceから再構築
+- Memory ID conflict: 既存Recordを上書きせず新ID + supersedes/conflicts_withへ送る
+- Memory promotion blocked: Review / Verification / Human Gateを解決するまで外部Authorityへ送らない
 - Continuation writeback missing: 次のsliceを開始しない
 - Continuation capability missing: Local repairまたはOwner-held capabilityならHuman Gateへ送る
 - Continuation quota exhausted: Goalを消さず次Windowまで自動継続を停止する
@@ -214,4 +233,6 @@ Knowledge Graphは候補Artifactの絞り込みに使用します。実装変更
 - Writeback前にQuotaをSpendする
 - Monitor-only Pollへ毎回Computeを使う
 - 圧縮Memoryだけ残してRaw Evidenceを捨てる
+- Retrieval時にRaw Tool Logを毎回Contextへ戻す
+- Memory conflictを既存Record上書きで解消する
 - MemoryからUser Policyを自動生成する
