@@ -126,12 +126,24 @@ properties:
   continuation:
     type: [object, "null"]
     properties:
+      controller:
+        const: native_continuation
       decision:
         enum: [run, ask_human, wait, blocked, complete]
+      should_run:
+        type: boolean
       lane:
-        enum: [health_gate, human_gate, evidence_wait, focus_wait, compute_quota, bounded_work, complete]
+        enum: [health_gate, human_gate, evidence_wait, focus_wait, budget_guard, compute_quota, bounded_work, complete]
+      reason_code:
+        type: string
       reason:
         type: string
+      effective_action:
+        type: string
+      must_attempt_work:
+        type: boolean
+      normal_delivery_allowed:
+        type: boolean
       writeback_complete:
         type: boolean
       todo_id:
@@ -140,6 +152,12 @@ properties:
         type: number
         minimum: 0.0
         maximum: 1.0
+      allowed_slots:
+        type: integer
+        minimum: 0
+      spent_slots:
+        type: integer
+        minimum: 0
     additionalProperties: false
   memory_projection:
     type: [object, "null"]
