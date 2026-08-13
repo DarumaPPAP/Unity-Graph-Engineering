@@ -209,7 +209,59 @@ Quality Gateは`passed`、`failed`、`unavailable`のいずれか。
 - `schemas/execution-orchestration.schema.yaml`
 - `policies/evidence-admission.yaml`
 
-## 8. Human gates
+## 8. Unity Editor verification authority
+
+`personal_full_control`でCodexが対象Unity Projectと実Unity Editorへ直接アクセスできる場合、Unity実装のPrimary Verification AuthorityはGitHub ActionsではなくDirect Unity Editor Validationとする。
+
+標準順序:
+
+```text
+Source change
+→ Static Contract Check
+→ Direct Unity Editor bind/import
+→ Unity compile
+→ Runtime / Tool discovery
+→ Read-only smoke
+→ Safety Contract
+→ Targeted Editor E2E
+→ Regression
+→ Cleanup / rollback confirmation
+→ Promotion Evidence
+→ Human Gate
+```
+
+- Unity自身によるImport / Compile結果を観測する。
+- Compile Error 0だけでRuntime Acceptanceとはしない。
+- 対象Taskに応じてTool Discovery、Safety、Mutation Scope、Runtime/E2E、Regressionを実行する。
+- MutationではRevision before/afterとScene / Asset変更ScopeをEvidenceへ残す。
+- Codexは観測したFailureだけをRoot Causeとして最小修正し、最大3 AttemptまでEditor再検証できる。
+- 同一Failureが2回、Scope拡張、ProjectSettings変更、破壊的変更が必要ならHuman Gateへ停止する。
+
+### CIの位置づけ
+
+GitHub ActionsはSupplemental Verificationであり、Direct Unity Editor Promotionの必須Gateではない。
+
+- Runner未開始、`steps=null`、Billing/Infrastructure unavailableは`not_verified`。
+- `not_verified`をPASSへ昇格しないが、それだけを理由にEditor PASSをBlockしない。
+- CIが実Runner Stepを実行してCode / Contract Failureを観測した場合は`conflicting_evidence`として自動Promotionを停止し、解決またはHuman Reviewを要求する。
+- CI PASSは追加Regression EvidenceでありPrimary Authorityを置き換えない。
+
+### Target Device分離
+
+Unity Editor Validationを「実機」またはTarget Device Validationと呼ばない。
+
+- Direct Unity Editor: Editor挙動のEvidence
+- GitHub Actions: Automated supplemental Evidence
+- Switch / PC Player / Android / Console等: Target Device Evidence
+
+Target Device GateはGoalまたはRelease ContractがPlayer / Device固有挙動を要求する場合だけ追加する。
+
+正本:
+
+- `policies/unity-editor-first-verification.yaml`
+- `workflows/unity-editor-first-verification.yaml`
+
+## 9. Human gates
 
 次はユーザー承認なしに実行しない。
 
@@ -226,7 +278,7 @@ Quality Gateは`passed`、`failed`、`unavailable`のいずれか。
 
 ユーザーが今回の依頼で明示的に承認した操作は、同一Goal内で再確認しない。
 
-## 9. Completion
+## 10. Completion
 
 最終報告には次を含める。
 
