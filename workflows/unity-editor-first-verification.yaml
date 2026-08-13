@@ -1,0 +1,114 @@
+schema_version: "1.0"
+id: unity-editor-first-verification
+name: Unity Editor First Verification
+policy: policies/unity-editor-first-verification.yaml
+execution_profile: personal_full_control
+
+purpose: >-
+  Validate Unity changes by letting Codex bind the candidate into an accessible real Unity Editor,
+  observe compile/runtime behavior, execute targeted E2E and regression checks, and produce promotion evidence.
+  GitHub Actions is supplemental and non-blocking when unavailable.
+
+nodes:
+  - id: resolve-authority
+    role: verifier
+    mode: read_only
+    purpose: Resolve target repository, candidate source identity, Unity project, Unity version, required contracts, and user-approved mutation scope.
+    outputs: [authority-evidence]
+
+  - id: static-contract-check
+    role: verifier
+    mode: checker_only
+    depends_on: [resolve-authority]
+    purpose: Verify manifests, catalogs, tool/source declarations, assembly/meta integrity, forbidden APIs, and request-specific static contracts before opening mutation scope.
+    outputs: [static-contract-evidence]
+
+  - id: bind-direct-unity-editor
+    role: integration-worker
+    depends_on: [static-contract-check]
+    purpose: Bind the candidate source/package into the directly accessible Unity project with a deterministic rollback plan and without unrelated environment setup.
+    constraints:
+      - preserve_existing_project_assets_by_default
+      - do_not_add_unrequested_packages
+      - do_not_change_projectsettings_without_human_gate
+      - record_transient_binding_before_state
+    outputs: [editor-binding-evidence, rollback-plan]
+
+  - id: editor-compile
+    role: independent-unity-verifier
+    depends_on: [bind-direct-unity-editor]
+    purpose: Let Unity import and compile the candidate and require observed compile error count zero.
+    loop:
+      repair_owner: implementation-worker
+      max_attempts: 3
+      stop_on: [same_failure_twice, scope_expansion_required]
+    outputs: [compile-evidence]
+
+  - id: runtime-surface-discovery
+    role: independent-unity-verifier
+    depends_on: [editor-compile]
+    purpose: Verify the expected runtime/tool surface, exact counts when contracted, duplicate identity count zero, and forbidden surface absence.
+    outputs: [runtime-surface-evidence]
+
+  - id: targeted-readonly-smoke
+    role: independent-unity-verifier
+    depends_on: [runtime-surface-discovery]
+    purpose: Execute the request-relevant read-only inspection and validation path before any approved mutation.
+    outputs: [readonly-smoke-evidence]
+
+  - id: safety-contract
+    role: independent-unity-verifier
+    depends_on: [targeted-readonly-smoke]
+    purpose: Verify revision, approval, one-time plan, rejection-without-mutation, failure envelope, and other request-relevant safety boundaries.
+    outputs: [safety-evidence]
+
+  - id: targeted-editor-e2e
+    role: independent-unity-verifier
+    depends_on: [safety-contract]
+    purpose: Execute only the approved request-relevant Editor E2E behavior and record exact scene/asset/revision changes.
+    outputs: [editor-e2e-evidence]
+
+  - id: regression-check
+    role: independent-unity-verifier
+    depends_on: [targeted-editor-e2e]
+    purpose: Re-run critical existing behavior that could regress because of the candidate change.
+    outputs: [regression-evidence]
+
+  - id: cleanup-and-rollback-check
+    role: integration-worker
+    depends_on: [regression-check]
+    purpose: Confirm unrelated assets and ProjectSettings were not changed and restore transient validation bindings or fixtures when required.
+    outputs: [cleanup-evidence]
+
+  - id: supplemental-ci-observation
+    role: verifier
+    mode: checker_only
+    depends_on: [static-contract-check]
+    blocking: false
+    purpose: Observe GitHub Actions only as supplemental evidence. Unavailable, steps-null, missing-runner, or unstarted jobs remain not_verified and do not block Editor-based promotion.
+    verdicts: [PASS, NOT_VERIFIED, CONFLICTING_FAILURE]
+    outputs: [ci-evidence]
+
+  - id: promotion-readiness
+    role: independent-verifier
+    mode: checker_only
+    depends_on: [cleanup-and-rollback-check, supplemental-ci-observation]
+    purpose: >-
+      Emit PROMOTION_READY when the Direct Unity Editor primary gate and required static contracts pass,
+      optional backends satisfy their explicit contract, and no conflicting executed CI failure is unresolved.
+      CI unavailability alone must not block promotion.
+    verdicts: [PROMOTION_READY, BLOCKED]
+    outputs: [promotion-readiness-report]
+
+  - id: human-promotion-gate
+    role: human
+    depends_on: [promotion-readiness]
+    condition: verdict == PROMOTION_READY
+    purpose: Stop before merge, direct main mutation, or release publication unless already explicitly approved by the user for the same goal.
+
+completion:
+  - direct Unity Editor validation evidence is complete
+  - unavailable CI is recorded as not_verified rather than pass or failure
+  - target-device claims remain separate from Editor evidence
+  - promotion-readiness verdict is PROMOTION_READY
+  - human-promotion-gate is satisfied or waiting_for_user
