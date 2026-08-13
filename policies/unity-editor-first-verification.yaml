@@ -1,0 +1,122 @@
+schema_version: "1.0"
+id: unity-editor-first-verification
+
+purpose: >-
+  Make Codex-driven validation in a real Unity Editor the primary verification authority
+  for Unity implementation and promotion decisions when a personal_full_control workspace
+  can access the target project directly. GitHub Actions remains supplemental evidence.
+
+applies_when:
+  execution_profile: personal_full_control
+  unity_project_access: direct_local_workspace
+  unity_editor_available: true
+
+terminology:
+  primary_validation: direct_unity_editor_validation
+  target_device_validation: separate_gate
+  automated_ci: supplemental_validation
+  note: Unity Editor validation must never be described as target-device validation.
+
+verification_authority:
+  primary: direct_unity_editor_validation
+  secondary:
+    - static_contract_verification
+    - automated_ci_when_available
+  promotion_basis:
+    - direct_unity_editor_validation
+    - required_static_contracts
+    - human_gate
+
+primary_editor_gate:
+  required_observations:
+    - package_or_source_import_completed
+    - unity_compile_completed
+    - compile_error_count_zero
+    - expected_runtime_or_tool_discovery_matches
+    - duplicate_runtime_or_tool_identity_count_zero
+    - request_relevant_readonly_smoke_passed
+    - request_relevant_safety_contract_passed
+    - request_relevant_end_to_end_behavior_passed
+    - relevant_regression_checks_passed
+    - unexpected_scene_asset_or_projectsettings_mutation_absent
+    - validation_cleanup_or_rollback_completed
+  evidence_must_include:
+    - unity_version
+    - project_identity_without_secrets
+    - candidate_commit_or_source_identity
+    - observed_compile_result
+    - observed_runtime_or_tool_surface
+    - exact_commands_or_tool_calls_when_material
+    - revision_before_after_for_mutation
+    - changed_asset_scope_for_mutation
+    - raw_failure_response_for_failed_checks
+    - unresolved_or_not_verified_items
+
+codex_repair_loop:
+  enabled: true
+  sequence:
+    - implement_minimal_change
+    - let_unity_import_and_compile
+    - inspect_console_and_runtime_state
+    - execute_targeted_validation
+    - record_evidence
+    - repair_only_observed_root_cause
+    - rerun_failed_and_regression_checks
+  max_attempts_per_node: 3
+  identical_failure_limit: 2
+  scope_expansion: prohibited_without_human_gate
+
+ci_policy:
+  role: supplemental_non_blocking
+  required_for_editor_promotion: false
+  unavailable_result: not_verified
+  steps_null_result: not_verified
+  missing_runner_result: not_verified
+  may_not_claim_pass_without_executed_steps: true
+  editor_pass_may_promote_when_ci_unavailable: true
+  observed_code_or_contract_failure:
+    classification: conflicting_evidence
+    automatic_promotion: prohibited
+    action: human_review_required
+  successful_ci:
+    classification: additional_regression_evidence
+    changes_primary_authority: false
+
+target_device_policy:
+  editor_validation_is_target_device_evidence: false
+  absent_target_device_test: not_verified
+  target_device_required_only_when:
+    - goal_explicitly_requires_player_or_device_behavior
+    - release_contract_explicitly_requires_device_acceptance
+
+optional_backend_policy:
+  explicit_unsupported_may_satisfy_gate_when_contract_allows: true
+  unsupported_must_not_be_rewritten_as_passed_backend_execution: true
+
+quality_semantics:
+  pass_requires_observation: true
+  unavailable_is_not_pass: true
+  not_verified_is_not_failure: true
+  compile_pass_is_not_runtime_acceptance: true
+  capture_pass_is_not_visual_acceptance: true
+  editor_pass_is_not_target_device_acceptance: true
+  stale_historical_evidence_cannot_replace_current_candidate_observation: true
+
+human_gate:
+  required_before:
+    - merge_pull_request
+    - direct_push_to_main
+    - release_publication
+    - destructive_asset_or_file_change
+    - persistent_projectsettings_change
+    - accepting_conflicting_ci_evidence
+
+promotion_readiness:
+  editor_primary_gate: required
+  required_static_contracts: required
+  automated_ci: optional
+  target_device: conditional
+  human_gate: required
+  verdicts:
+    - PROMOTION_READY
+    - BLOCKED
