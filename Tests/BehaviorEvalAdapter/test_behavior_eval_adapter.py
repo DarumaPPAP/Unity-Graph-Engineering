@@ -57,6 +57,7 @@ class BehaviorEvalAdapterTests(unittest.TestCase):
         output: Path | None = None,
         agent_args: list[str] | None = None,
         timeout_seconds: float | None = None,
+        require_production_identity: bool = False,
     ) -> subprocess.CompletedProcess[str]:
         request_path = temp / "request.yaml"
         request_path.write_text(yaml.safe_dump(request, sort_keys=False), encoding="utf-8")
@@ -76,6 +77,8 @@ class BehaviorEvalAdapterTests(unittest.TestCase):
         ]
         if timeout_seconds is not None:
             argv.extend(["--timeout-seconds", str(timeout_seconds)])
+        if require_production_identity:
+            argv.append("--require-production-identity")
         return subprocess.run(
             argv,
             cwd=ROOT,
@@ -97,11 +100,83 @@ class BehaviorEvalAdapterTests(unittest.TestCase):
             self.assertEqual(envelope["execution_owner"]["repository"], "DarumaPPAP/Unity-Graph-Engineering")
             self.assertEqual(envelope["unityagent"]["revision"], "fixture-unityagent-sha")
             self.assertEqual(envelope["executor"]["mode"], "prompt")
+            self.assertEqual(envelope["executor"]["execution_class"], "fixture")
             self.assertEqual(envelope["attempt"]["agent_attempt"], 1)
             self.assertEqual(envelope["status"], "completed")
             self.assertTrue((output / "generated" / "CameraDebugger.cs").is_file())
             self.assertTrue((output / "context-manifest.yaml").is_file())
             self.assertNotIn("workspace_root", envelope)
+
+    def test_mutation_scope_and_evidence_contract_are_forwarded_to_agent(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            unityagent_root = self._make_unityagent_root(temp)
+            request = self._request()
+            request["workspace"]["allowed_paths"] = ["CameraDebugger.cs"]
+            request["workspace"]["prohibited_paths"] = ["ProjectSettings"]
+            request["evidence"]["require"].append("diff")
+            request_log = temp / "received-request.json"
+
+            completed = self._run_adapter(
+                temp,
+                unityagent_root,
+                request,
+                agent_args=["--request-log", str(request_log)],
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            forwarded = json.loads(request_log.read_text(encoding="utf-8"))
+            self.assertEqual(forwarded["mutation_scope"]["allowed_paths"], ["CameraDebugger.cs"])
+            self.assertEqual(forwarded["mutation_scope"]["prohibited_paths"], ["ProjectSettings"])
+            self.assertIn("diff", forwarded["evidence_contract"]["require"])
+            self.assertNotIn("expectation", forwarded)
+
+    def test_production_identity_guard_rejects_fixture_execution(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            unityagent_root = self._make_unityagent_root(temp)
+
+            completed = self._run_adapter(
+                temp,
+                unityagent_root,
+                self._request(),
+                require_production_identity=True,
+            )
+
+            self.assertEqual(completed.returncode, 30)
+            self.assertIn("execution_class: production", completed.stderr)
+            self.assertFalse((temp / "output" / "execution-envelope.yaml").exists())
+
+    def test_production_identity_guard_accepts_explicit_real_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            unityagent_root = self._make_unityagent_root(temp)
+            output = temp / "output"
+
+            completed = self._run_adapter(
+                temp,
+                unityagent_root,
+                self._request(),
+                output=output,
+                agent_args=[
+                    "--execution-class",
+                    "production",
+                    "--provider",
+                    "contract-provider",
+                    "--model",
+                    "contract-model",
+                    "--agent-id",
+                    "contract-agent",
+                ],
+                require_production_identity=True,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            envelope = yaml.safe_load((output / "execution-envelope.yaml").read_text(encoding="utf-8"))
+            self.assertEqual(envelope["executor"]["execution_class"], "production")
+            self.assertEqual(envelope["executor"]["agent_id"], "contract-agent")
+            self.assertEqual(envelope["executor"]["provider"], "contract-provider")
+            self.assertEqual(envelope["executor"]["model"], "contract-model")
 
     def test_nonzero_process_exit_is_authoritative_over_completed_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

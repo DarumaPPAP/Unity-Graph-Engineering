@@ -43,6 +43,7 @@ MANAGED_OUTPUT_NAMES = (
     "executor-stdout.txt",
     "executor-stderr.txt",
 )
+INVALID_PRODUCTION_IDENTITIES = {"", "unavailable", "unknown", "fixture", "fake", "test"}
 
 
 class BehaviorAdapterError(ValueError):
@@ -89,6 +90,22 @@ def _command_hash(command: list[str]) -> str:
     return hashlib.sha256(json.dumps(command, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
+def _scope_paths(workspace: dict[str, Any], key: str) -> list[str]:
+    raw = workspace.get(key, []) or []
+    if not isinstance(raw, list):
+        raise BehaviorAdapterError(f"Behavior Eval workspace.{key} must be a list")
+    values: list[str] = []
+    for item in raw:
+        value = str(item or "").strip().replace("\\", "/")
+        path = Path(value)
+        if not value or path.is_absolute() or ".." in path.parts:
+            raise BehaviorAdapterError(
+                f"Behavior Eval workspace.{key} must contain repository-relative paths without traversal"
+            )
+        values.append(value)
+    return values
+
+
 def _validate_request(request: dict[str, Any], unityagent_root: Path) -> tuple[Path, str, str]:
     if request.get("schema_version") != "1.0":
         raise BehaviorAdapterError("Behavior Eval request schema_version must be 1.0")
@@ -108,6 +125,8 @@ def _validate_request(request: dict[str, Any], unityagent_root: Path) -> tuple[P
     workspace = request.get("workspace", {}) or {}
     if workspace.get("mutation_mode") != "sandbox":
         raise BehaviorAdapterError("Behavior Eval mutation_mode must be sandbox")
+    _scope_paths(workspace, "allowed_paths")
+    _scope_paths(workspace, "prohibited_paths")
     fixture_ref = Path(str(workspace.get("fixture") or ""))
     if fixture_ref.is_absolute() or ".." in fixture_ref.parts:
         raise BehaviorAdapterError("Behavior Eval fixture must be repository-relative without traversal")
@@ -171,6 +190,20 @@ def _metadata(staging: Path) -> dict[str, Any]:
     return _load_yaml(path)
 
 
+def _validate_production_identity(metadata: dict[str, Any]) -> None:
+    execution_class = str(metadata.get("execution_class") or "").strip().lower()
+    provider = str(metadata.get("provider") or "").strip()
+    model = str(metadata.get("model") or "").strip()
+    agent_id = str(metadata.get("agent_id") or "").strip()
+
+    if execution_class != "production":
+        raise BehaviorAdapterError("Production smoke requires execution-metadata.yaml execution_class: production")
+    for field, value in (("provider", provider), ("model", model), ("agent_id", agent_id)):
+        lowered = value.lower()
+        if lowered in INVALID_PRODUCTION_IDENTITIES or "fixture" in lowered or "fake" in lowered:
+            raise BehaviorAdapterError(f"Production smoke requires a real {field} identity")
+
+
 def _gate_evidence(output: Path) -> list[dict[str, Any]]:
     path = output / "gate-evidence.yaml"
     if not path.is_file():
@@ -203,6 +236,8 @@ def _write_envelope(
     provider = str(metadata.get("provider") or "unavailable")
     model = str(metadata.get("model") or "unavailable")
     model_revision = str(metadata.get("model_revision") or "unavailable")
+    execution_class = str(metadata.get("execution_class") or "unavailable")
+    agent_id = str(metadata.get("agent_id") or "unavailable")
     infrastructure_attempts = max(1, int(metadata.get("infrastructure_attempts", 1)))
     status = _resolved_status(metadata, process_returncode)
 
@@ -232,6 +267,8 @@ def _write_envelope(
         "executor": {
             "profile": str((request.get("execution", {}) or {}).get("profile") or ""),
             "mode": mode,
+            "execution_class": execution_class,
+            "agent_id": agent_id,
             "provider": provider,
             "model": model,
             "model_revision": model_revision,
@@ -290,6 +327,7 @@ def main() -> int:
     parser.add_argument("--unityagent-root", type=Path, default=None)
     parser.add_argument("--agent-command-json", default=None)
     parser.add_argument("--timeout-seconds", type=float, default=DEFAULT_EXECUTION_TIMEOUT_SECONDS)
+    parser.add_argument("--require-production-identity", action="store_true")
     args = parser.parse_args()
 
     try:
@@ -313,6 +351,7 @@ def main() -> int:
             staging.mkdir(parents=True)
             publish.mkdir(parents=True)
 
+            workspace = request.get("workspace", {}) or {}
             production_request = {
                 "schema_version": "1.0",
                 "task": request.get("task", {}) or {},
@@ -323,6 +362,11 @@ def main() -> int:
                     "max_agent_attempts": 1,
                 },
                 "workspace_root": str(sandbox),
+                "mutation_scope": {
+                    "allowed_paths": _scope_paths(workspace, "allowed_paths"),
+                    "prohibited_paths": _scope_paths(workspace, "prohibited_paths"),
+                },
+                "evidence_contract": request.get("evidence", {}) or {},
                 "evidence_output": str(staging),
                 "unityagent_revision": str(request.get("unityagent_revision") or ""),
                 "golden_task_id": str(request.get("golden_task_id") or ""),
@@ -352,6 +396,8 @@ def main() -> int:
             (publish / "executor-stderr.txt").write_text(completed.stderr, encoding="utf-8")
             _copy_evidence(staging, publish)
             metadata = _metadata(staging)
+            if args.require_production_identity:
+                _validate_production_identity(metadata)
             _write_envelope(
                 request,
                 publish,
