@@ -49,19 +49,48 @@ class Phase11HardeningTests(unittest.TestCase):
         )
         return control
 
-    def test_policy_provenance_requires_canonical_clause_fragment(self) -> None:
+    def test_policy_provenance_accepts_exact_full_yaml_fragment(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             control = self._control(Path(temp_dir))
             structured = {
                 "loaded_policies": [{
                     "id": "minimum_cohesive_solution_first",
-                    "source_path": ".ai/user-policy.yaml#minimum_cohesive_solution_first",
+                    "source_path": ".unityagent-control/.ai/user-policy.yaml#core_user_policies.minimum_cohesive_solution_first",
                     "reason": "minimum cohesive solution",
                 }]
             }
             bridge._validate_policies(control, structured)
             self.assertEqual(structured["loaded_policies"][0]["id"], "minimum_cohesive_solution_first")
 
+    def test_policy_provenance_keeps_unique_leaf_fragment_compatibility(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            control = self._control(Path(temp_dir))
+            structured = {
+                "loaded_policies": [{
+                    "id": "minimum_cohesive_solution_first",
+                    "source_path": ".ai/user-policy.yaml#minimum_cohesive_solution_first",
+                    "reason": "legacy unique leaf fragment",
+                }]
+            }
+            bridge._validate_policies(control, structured)
+            self.assertEqual(structured["loaded_policies"][0]["id"], "minimum_cohesive_solution_first")
+
+    def test_policy_provenance_rejects_wrong_parent_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            control = self._control(Path(temp_dir))
+            invalid = {
+                "loaded_policies": [{
+                    "id": "minimum_cohesive_solution_first",
+                    "source_path": ".ai/user-policy.yaml#wrong_parent.minimum_cohesive_solution_first",
+                    "reason": "wrong YAML path",
+                }]
+            }
+            with self.assertRaises(legacy.CodexProductionAgentError):
+                bridge._validate_policies(control, invalid)
+
+    def test_policy_provenance_rejects_document_id_without_clause_fragment(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            control = self._control(Path(temp_dir))
             invalid = {
                 "loaded_policies": [{
                     "id": "user-policy",
@@ -71,6 +100,40 @@ class Phase11HardeningTests(unittest.TestCase):
             }
             with self.assertRaises(legacy.CodexProductionAgentError):
                 bridge._validate_policies(control, invalid)
+
+    def test_policy_provenance_rejects_ambiguous_leaf_fragment(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            control = self._control(Path(temp_dir))
+            policy_path = control / ".ai" / "user-policy.yaml"
+            policy_path.write_text(
+                yaml.safe_dump({
+                    "core_user_policies": {
+                        "minimum_cohesive_solution_first": {"priority": "critical"},
+                    },
+                    "legacy": {
+                        "minimum_cohesive_solution_first": {"priority": "legacy"},
+                    },
+                }, sort_keys=False),
+                encoding="utf-8",
+            )
+            invalid = {
+                "loaded_policies": [{
+                    "id": "minimum_cohesive_solution_first",
+                    "source_path": ".ai/user-policy.yaml#minimum_cohesive_solution_first",
+                    "reason": "ambiguous leaf fragment",
+                }]
+            }
+            with self.assertRaises(legacy.CodexProductionAgentError):
+                bridge._validate_policies(control, invalid)
+
+            exact = {
+                "loaded_policies": [{
+                    "id": "minimum_cohesive_solution_first",
+                    "source_path": ".ai/user-policy.yaml#core_user_policies.minimum_cohesive_solution_first",
+                    "reason": "exact path remains valid",
+                }]
+            }
+            bridge._validate_policies(control, exact)
 
     def test_optional_unavailable_gate_does_not_fail_architecture_task(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

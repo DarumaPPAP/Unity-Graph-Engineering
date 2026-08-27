@@ -25,12 +25,37 @@ DEFAULT_REASONING_EFFORT = "high"
 ROUTE_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
-def _recursive_has_key(value: Any, target: str) -> bool:
+def _recursive_key_count(value: Any, target: str) -> int:
     if isinstance(value, dict):
-        return target in value or any(_recursive_has_key(child, target) for child in value.values())
+        count = 1 if target in value else 0
+        return count + sum(_recursive_key_count(child, target) for child in value.values())
     if isinstance(value, list):
-        return any(_recursive_has_key(child, target) for child in value)
-    return False
+        return sum(_recursive_key_count(child, target) for child in value)
+    return 0
+
+
+def _fragment_resolves_to_clause(data: Any, fragment: str, policy_id: str) -> bool:
+    """Resolve a policy source fragment to one canonical YAML clause.
+
+    Full dotted fragments are treated as exact YAML mapping paths. A legacy leaf-only
+    fragment is accepted only when that clause key occurs exactly once in the document.
+    """
+    fragment = fragment.strip()
+    if not fragment:
+        return False
+    parts = [part for part in fragment.split(".") if part]
+    if not parts or parts[-1] != policy_id:
+        return False
+
+    if len(parts) == 1:
+        return _recursive_key_count(data, policy_id) == 1
+
+    current = data
+    for part in parts:
+        if not isinstance(current, dict) or part not in current:
+            return False
+        current = current[part]
+    return True
 
 
 def _source_in_control(control: Path, source_path: str) -> tuple[Path, str]:
@@ -60,16 +85,16 @@ def _validate_policies(control: Path, structured: dict[str, Any]) -> None:
         reason = str(item.get("reason") or "").strip()
         if not policy_id or not source_path or not reason:
             raise legacy.CodexProductionAgentError("loaded_policies requires canonical id/source_path/reason")
+
         source, fragment = _source_in_control(control, source_path)
-        if fragment != policy_id:
-            raise legacy.CodexProductionAgentError(
-                f"Policy clause id/source fragment mismatch: {policy_id} vs {source_path}"
-            )
         if not source.is_file() or source.suffix.lower() not in {".yaml", ".yml"}:
             raise legacy.CodexProductionAgentError(f"Policy source is not authoritative YAML: {source_path}")
         data = yaml.safe_load(source.read_text(encoding="utf-8")) or {}
-        if not _recursive_has_key(data, policy_id):
-            raise legacy.CodexProductionAgentError(f"Unknown canonical policy clause: {policy_id}")
+        if not _fragment_resolves_to_clause(data, fragment, policy_id):
+            raise legacy.CodexProductionAgentError(
+                f"Policy clause id/source fragment mismatch: {policy_id} vs {source_path}"
+            )
+
         normalized.append({"id": policy_id, "source_path": source_path, "reason": reason})
     structured["loaded_policies"] = normalized
 
@@ -259,7 +284,8 @@ def _prompt(request: dict[str, Any]) -> str:
 
 PHASE 1.1 HARDENING CONTRACT
 - `loaded_policies[].id` is a canonical policy CLAUSE id, never a document id.
-- For a clause from user-policy use `source_path` with an exact fragment, for example `.ai/user-policy.yaml#minimum_cohesive_solution_first`.
+- For a clause from user-policy prefer a full YAML fragment path, for example `.ai/user-policy.yaml#core_user_policies.minimum_cohesive_solution_first`.
+- A legacy leaf-only fragment is accepted only when that clause id is unique in the YAML document.
 - Quality gate `requirement` must be one of: required, conditional, informational, not_applicable.
 - Use `conditional` only when that conditional gate is actually activated by this task. Otherwise use `not_applicable`.
 - The bridge ignores your overall status guess and derives completion from the authoritative Task Contract selected by your own route.
@@ -287,6 +313,10 @@ def main() -> int:
     version = "unavailable"
     tool_hash = hashlib.sha256(b"codex-production-agent-v2-unresolved").hexdigest()
     request: dict[str, Any] = {}
+    runtime: dict[str, Any] = {}
+    context: dict[str, Any] = {}
+    changed: list[str] = []
+    codex_protocol_completed = False
 
     try:
         if args.timeout_seconds <= 0:
@@ -371,6 +401,7 @@ def main() -> int:
         structured = json.loads(final_path.read_text(encoding="utf-8"))
         if not isinstance(structured, dict):
             raise legacy.CodexProductionAgentError("Codex structured final output must be a JSON object")
+        codex_protocol_completed = True
 
         _validate_policies(control, structured)
         _resolve_gates(control, request, structured)
@@ -391,13 +422,15 @@ def main() -> int:
 
     except (OSError, UnicodeError, json.JSONDecodeError, yaml.YAMLError, legacy.CodexProductionAgentError, ValueError) as exc:
         message = f"Codex Production Agent v2 failed: {exc}"
+        failure_class = "evaluator_contract_failure" if codex_protocol_completed else "runtime_protocol_failure"
         try:
             if request and model != "unavailable":
                 legacy._write_failure_evidence(
                     request, args.output, message=message, provider=provider, model=model,
                     version=version, tool_hash=tool_hash,
                 )
-                _patch_metadata(args.output, failure_class="runtime_protocol_failure", reasoning_effort=args.reasoning_effort, runtime={})
+                _patch_metadata(args.output, failure_class=failure_class, reasoning_effort=args.reasoning_effort, runtime=runtime)
+                _write_metrics(args.output, failure_class=failure_class, changed=changed, context=context, runtime=runtime)
         except OSError:
             pass
         print(message, file=sys.stderr)
