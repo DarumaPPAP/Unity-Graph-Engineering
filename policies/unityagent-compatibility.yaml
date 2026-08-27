@@ -1,0 +1,99 @@
+schema_version: "1.0"
+status: authoritative
+purpose: keep_Unity_Graph_Engineering_execution_contracts_compatible_with_current_UnityAgent_without_duplicating_domain_authority
+
+ownership:
+  unity_domain_contracts: DarumaPPAP/UnityAgent
+  execution_runtime: DarumaPPAP/Unity-Graph-Engineering
+
+canonical_sources:
+  context_index: DarumaPPAP/UnityAgent/.ai/context-index.yaml
+  context_manifest: DarumaPPAP/UnityAgent/.ai/context-manifest.schema.yaml
+  context_budget: DarumaPPAP/UnityAgent/.ai/context-budget.yaml
+  loop_handoff_builder: DarumaPPAP/UnityAgent/Tools/LoopIntegration/handoff.py
+  behavior_eval_contract: DarumaPPAP/UnityAgent/.ai/eval/behavior-eval-contract.yaml
+  behavior_eval_request: DarumaPPAP/UnityAgent/Tests/BehaviorEval/behavior-eval-request.schema.yaml
+  behavior_eval_envelope: DarumaPPAP/UnityAgent/Tests/BehaviorEval/execution-envelope.schema.yaml
+
+handoff_v2:
+  schema: schemas/unityagent-handoff-v2.schema.yaml
+  schema_version: "2.0"
+  adapter: Tools/UnityAgentCompatibility/handoff_adapter.py
+  preserve:
+    - task_id
+    - context_manifest_id
+    - context_manifest_schema_version
+    - route_id
+    - task_fingerprint
+    - task_contract_ref
+    - execution_profile
+    - risk_level
+    - selected_contexts
+    - context_budget_decision
+    - allowed_mutations
+    - prohibited_mutations
+    - required_quality_gates
+    - conditional_quality_gates
+    - unresolved_bindings
+  transcript_transfer_forbidden: true
+  execution_budget_transfer_forbidden: true
+
+context_budget:
+  owner: DarumaPPAP/UnityAgent
+  recompute_in_execution_owner: false
+  accepted_statuses:
+    - within_budget
+    - compression_required
+    - blocked
+    - unmeasured
+  mutation_requires: within_budget
+  non_mutating_analysis_may_continue_when:
+    - compression_required
+    - blocked
+    - unmeasured
+  non_mutating_analysis_must_not_claim_budget_pass: true
+
+execution_budget:
+  owner: DarumaPPAP/Unity-Graph-Engineering
+  separate_from_context_budget: true
+  canonical_prompt_budget: policies/prompt-budget.yaml
+  canonical_graph_budget: policies/graph-loop-budget.yaml
+
+behavior_eval:
+  adapter: Tools/BehaviorEvalAdapter/behavior_eval_adapter.py
+  production_execution_path_required: true
+  provider_specific_dependency_forbidden: true
+  shell_mode: false
+  sandbox_required: true
+  smoke_agent_attempts: 1
+  request_mode_vocabulary:
+    prompt: prompt
+    graph_loop: graph_loop
+  work_kind_mapping:
+    implementation: mutation
+    mutation: mutation
+    analysis: analysis
+    verification: verification
+    portable_import: portable_import
+  evidence_required:
+    - response.md
+    - context-manifest.yaml
+    - artifact-index.yaml
+  optional_evidence:
+    - diff.patch
+    - gate-evidence.yaml
+    - metrics.json
+  envelope_output: execution-envelope.yaml
+  unknown_provider_or_model_metadata: unavailable
+
+unavailable_semantics:
+  unavailable_is_not_passed: true
+  unavailable_is_not_automatic_graph_escalation: true
+  graph_escalation_requires_current_goal_to_exceed_prompt_execution_model: true
+  implementation_may_complete_with_unavailable_validation_when_domain_contract_allows: true
+
+regression:
+  validator: Tools/ExecutionPolicyValidator/validate_execution_policies.py
+  compatibility_tests: Tests/UnityAgentCompatibility
+  behavior_adapter_tests: Tests/BehaviorEvalAdapter
+  cross_repo_snapshot_is_not_canonical_policy: true
