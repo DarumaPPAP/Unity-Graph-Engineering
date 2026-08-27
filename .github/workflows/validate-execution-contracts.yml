@@ -102,7 +102,7 @@ jobs:
           PY
 
       - name: Validate execution policy coherence
-        run: python Tools/ExecutionPolicyValidator/validate_execution_policies.py
+        run: python Tools/ExecutionPolicyValidator/validate_execution_policies_compat.py
 
       - name: Validate local UnityAgent compatibility boundary
         run: python Tools/UnityAgentCompatibility/validate_local_compatibility.py
@@ -140,6 +140,7 @@ jobs:
           test -f Tests/ExternalProviders/test_execution_orchestrator.py
           test -f Tests/UnityAgentCompatibility/test_handoff_adapter.py
           test -f Tests/BehaviorEvalAdapter/test_behavior_eval_adapter.py
+          test -f Tools/ExecutionPolicyValidator/validate_execution_policies_compat.py
           test -f Tools/UnityAgentCompatibility/handoff_adapter.py
           test -f Tools/UnityAgentCompatibility/validate_local_compatibility.py
           test -f Tools/UnityAgentCompatibility/validate_against_unityagent.py
