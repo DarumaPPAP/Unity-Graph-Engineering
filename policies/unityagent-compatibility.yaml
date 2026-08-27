@@ -85,6 +85,19 @@ behavior_eval:
     - metrics.json
   envelope_output: execution-envelope.yaml
   unknown_provider_or_model_metadata: unavailable
+  production_smoke:
+    launcher: Tools/BehaviorEvalAdapter/run_production_smoke.py
+    unityagent_suite: production_smoke
+    rollout: manual
+    blocking: false
+    agent_attempts: 1
+    require_execution_class: production
+    require_agent_id: true
+    require_provider_identity: true
+    require_model_identity: true
+    mutation_scope_transfer_required: true
+    evidence_contract_transfer_required: true
+    known_fake_fixture_forbidden: true
 
 unavailable_semantics:
   unavailable_is_not_passed: true
