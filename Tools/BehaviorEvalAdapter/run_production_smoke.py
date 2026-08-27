@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run UnityAgent Phase 1 Real Actual Behavior smoke against a real Production Agent."""
+"""Run UnityAgent Phase 1.1 Real Actual Behavior smoke against a real Production Agent."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-ADAPTER = ROOT / "Tools" / "BehaviorEvalAdapter" / "behavior_eval_adapter.py"
-DEFAULT_TIMEOUT_SECONDS = 900.0
+ADAPTER = ROOT / "Tools" / "BehaviorEvalAdapter" / "behavior_eval_adapter_v2.py"
+DEFAULT_TIMEOUT_SECONDS = 150.0
 
 
 class ProductionSmokeError(ValueError):
@@ -45,13 +45,8 @@ def _load_agent_command(cli_value: str | None) -> tuple[str, list[str]]:
         raise ProductionSmokeError("Production Agent command must be a JSON array") from exc
     if not isinstance(command, list) or not command or not all(isinstance(item, str) and item for item in command):
         raise ProductionSmokeError("Production Agent command must be a non-empty JSON string array")
-
     lowered = [item.replace("\\", "/").lower() for item in command]
-    if any(
-        token.endswith("/tests/behaviorevaladapter/fake_production_agent.py")
-        or token.endswith("fake_production_agent.py")
-        for token in lowered
-    ):
+    if any(token.endswith("fake_production_agent.py") for token in lowered):
         raise ProductionSmokeError("Phase 1 production smoke refuses the repository fake Production Agent fixture")
     return raw, command
 
@@ -61,7 +56,7 @@ def _run_id(value: str | None) -> str:
         if "/" in value or "\\" in value or value in {".", ".."}:
             raise ProductionSmokeError("run-id must be a single safe path segment")
         return value
-    return datetime.now(timezone.utc).strftime("production-smoke-%Y%m%d-%H%M%S")
+    return datetime.now(timezone.utc).strftime("production-smoke-v2-%Y%m%d-%H%M%S")
 
 
 def main() -> int:
@@ -69,6 +64,7 @@ def main() -> int:
     parser.add_argument("--unityagent-root", type=Path, default=None)
     parser.add_argument("--agent-command-json", default=None)
     parser.add_argument("--run-id", default=None)
+    parser.add_argument("--case", "--only-case", dest="only_case", default=None)
     parser.add_argument("--timeout-seconds", type=float, default=DEFAULT_TIMEOUT_SECONDS)
     args = parser.parse_args()
 
@@ -99,13 +95,16 @@ def main() -> int:
         "production_smoke",
         "--run-id",
         run_id,
-        "--executor-command",
-        *adapter_command,
     ]
+    if args.only_case:
+        command.extend(["--case", args.only_case])
+    command.extend(["--executor-command", *adapter_command])
 
     env = os.environ.copy()
     env["UNITYAGENT_ROOT"] = str(unityagent_root)
     env["UNITYAGENT_PRODUCTION_COMMAND_JSON"] = raw_command
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
     completed = subprocess.run(
         command,
         cwd=unityagent_root,
