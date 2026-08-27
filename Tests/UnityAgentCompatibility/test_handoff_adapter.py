@@ -53,7 +53,7 @@ class UnityAgentHandoffV2Tests(unittest.TestCase):
         self.assertEqual(patch["task_contract_id"], "csharp-local-fix")
         self.assertEqual(patch["unityagent_handoff"]["context_manifest_id"], "manifest-1")
         self.assertEqual(patch["unityagent_handoff"]["required_quality_gates"], ["static_review", "compile"])
-        self.assertTrue(patch["mutation_allowed_by_context_budget"])
+        self.assertEqual(patch["unityagent_handoff"]["context_budget_decision"]["decision"], "within_budget")
 
     def test_mutation_is_blocked_when_context_budget_is_not_within_budget(self) -> None:
         document = self._document("compression_required")
@@ -62,7 +62,9 @@ class UnityAgentHandoffV2Tests(unittest.TestCase):
     def test_read_only_handoff_may_preserve_nonpassing_context_budget_status(self) -> None:
         document = self._document("unmeasured", mutating=False)
         self.assertEqual(validate_handoff(document), [])
-        self.assertFalse(build_state_patch(document)["mutation_allowed_by_context_budget"])
+        patch = build_state_patch(document)
+        self.assertEqual(patch["unityagent_handoff"]["context_budget_decision"]["decision"], "unmeasured")
+        self.assertEqual(patch["unityagent_handoff"]["allowed_mutations"], [])
 
 
 if __name__ == "__main__":
