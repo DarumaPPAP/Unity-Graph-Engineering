@@ -80,10 +80,6 @@ def _command_hash(command: list[str]) -> str:
     return hashlib.sha256(json.dumps(command, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
-def _safe_relative(root: Path, path: Path) -> str:
-    return path.resolve().relative_to(root.resolve()).as_posix()
-
-
 def _validate_request(request: dict[str, Any], unityagent_root: Path) -> tuple[Path, str, str]:
     if request.get("schema_version") != "1.0":
         raise BehaviorAdapterError("Behavior Eval request schema_version must be 1.0")
@@ -242,6 +238,21 @@ def _write_envelope(
     )
 
 
+def _resolve_unityagent_root(cli_root: Path | None) -> Path:
+    if cli_root is not None:
+        root = cli_root.resolve()
+    else:
+        raw = os.environ.get("UNITYAGENT_ROOT", "").strip()
+        if not raw:
+            raise BehaviorAdapterError("UnityAgent checkout root is required via --unityagent-root or UNITYAGENT_ROOT")
+        root = Path(raw).resolve()
+    if not root.is_dir():
+        raise BehaviorAdapterError(f"UnityAgent checkout root does not exist: {root}")
+    if not (root / "AGENTS.md").is_file() or not (root / ".ai").is_dir():
+        raise BehaviorAdapterError("Configured UnityAgent root does not look like a UnityAgent checkout")
+    return root
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--request", type=Path, required=True)
@@ -252,9 +263,7 @@ def main() -> int:
 
     try:
         request = _load_yaml(args.request)
-        unityagent_root = (args.unityagent_root or Path(os.environ.get("UNITYAGENT_ROOT", ""))).resolve()
-        if not str(unityagent_root) or not unityagent_root.is_dir():
-            raise BehaviorAdapterError("UnityAgent checkout root is required via --unityagent-root or UNITYAGENT_ROOT")
+        unityagent_root = _resolve_unityagent_root(args.unityagent_root)
         fixture, mode, work_kind = _validate_request(request, unityagent_root)
         command = _load_command(args.agent_command_json)
 
