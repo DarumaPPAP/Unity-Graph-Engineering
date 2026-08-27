@@ -15,13 +15,19 @@ FAKE_AGENT = ROOT / "Tests" / "BehaviorEvalAdapter" / "fake_production_agent.py"
 
 
 class BehaviorEvalAdapterTests(unittest.TestCase):
+    def _make_unityagent_root(self, temp: Path) -> Path:
+        unityagent_root = temp / "UnityAgent"
+        (unityagent_root / ".ai").mkdir(parents=True)
+        (unityagent_root / "AGENTS.md").write_text("# Fixture UnityAgent\n", encoding="utf-8")
+        fixture = unityagent_root / "Tests" / "BehaviorEval" / "Fixtures" / "CameraDebugger"
+        fixture.mkdir(parents=True)
+        (fixture / "CameraDebugger.cs").write_text("public class CameraDebugger { }\n", encoding="utf-8")
+        return unityagent_root
+
     def test_adapter_runs_production_command_once_and_emits_envelope(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
-            unityagent_root = temp / "UnityAgent"
-            fixture = unityagent_root / "Tests" / "BehaviorEval" / "Fixtures" / "CameraDebugger"
-            fixture.mkdir(parents=True)
-            (fixture / "CameraDebugger.cs").write_text("public class CameraDebugger { }\n", encoding="utf-8")
+            unityagent_root = self._make_unityagent_root(temp)
 
             request = {
                 "schema_version": "1.0",
@@ -82,9 +88,7 @@ class BehaviorEvalAdapterTests(unittest.TestCase):
     def test_adapter_rejects_graph_alias_and_requires_production_vocabulary(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
-            unityagent_root = temp / "UnityAgent"
-            fixture = unityagent_root / "Tests" / "BehaviorEval" / "Fixtures" / "CameraDebugger"
-            fixture.mkdir(parents=True)
+            unityagent_root = self._make_unityagent_root(temp)
             request = {
                 "schema_version": "1.0",
                 "run_id": "behavior-test",
@@ -126,6 +130,31 @@ class BehaviorEvalAdapterTests(unittest.TestCase):
             )
             self.assertEqual(completed.returncode, 30)
             self.assertIn("Unsupported production execution mode", completed.stderr)
+
+    def test_adapter_requires_explicit_unityagent_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            request_path = Path(temp_dir) / "request.yaml"
+            request_path.write_text("schema_version: '1.0'\n", encoding="utf-8")
+            env = dict()
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(ADAPTER),
+                    "--request",
+                    str(request_path),
+                    "--output",
+                    str(Path(temp_dir) / "output"),
+                    "--agent-command-json",
+                    json.dumps([sys.executable, str(FAKE_AGENT)]),
+                ],
+                cwd=ROOT,
+                check=False,
+                text=True,
+                capture_output=True,
+                env=env,
+            )
+            self.assertEqual(completed.returncode, 30)
+            self.assertIn("UnityAgent checkout root is required", completed.stderr)
 
 
 if __name__ == "__main__":
