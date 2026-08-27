@@ -75,6 +75,53 @@ def _source_in_control(control: Path, source_path: str) -> tuple[Path, str]:
     return resolved, fragment
 
 
+def _canonical_policy_reference(
+    control: Path,
+    policy_id: str,
+    source_path: str,
+) -> tuple[str, str, Path, str]:
+    """Return canonical clause id and source reference for one policy record.
+
+    The canonical shape is:
+      id=<leaf clause id>
+      source_path=<authoritative yaml>#<exact dotted yaml path>
+
+    Production runs have also emitted a semantically equivalent shape where the qualified
+    YAML reference was placed in ``id`` and ``source_path`` contained only the document.
+    That representation is normalized only when both fields resolve to the same control
+    snapshot file and any supplied fragments agree. Ambiguous or contradictory references
+    remain fail-closed.
+    """
+    canonical_id = policy_id.strip()
+    canonical_source_path = source_path.strip()
+
+    if "#" in canonical_id:
+        id_source, id_fragment = _source_in_control(control, canonical_id)
+        id_parts = [part for part in id_fragment.split(".") if part]
+        if not id_fragment or not id_parts:
+            raise legacy.CodexProductionAgentError(
+                f"Qualified policy id must include a clause fragment: {policy_id}"
+            )
+
+        source, source_fragment = _source_in_control(control, canonical_source_path)
+        if id_source != source:
+            raise legacy.CodexProductionAgentError(
+                f"Policy id/source document mismatch: {policy_id} vs {source_path}"
+            )
+        if source_fragment and source_fragment != id_fragment:
+            raise legacy.CodexProductionAgentError(
+                f"Policy id/source fragment mismatch: {policy_id} vs {source_path}"
+            )
+
+        canonical_id = id_parts[-1]
+        if not source_fragment:
+            source_document = canonical_source_path.split("#", 1)[0]
+            canonical_source_path = f"{source_document}#{id_fragment}"
+
+    source, fragment = _source_in_control(control, canonical_source_path)
+    return canonical_id, canonical_source_path, source, fragment
+
+
 def _validate_policies(control: Path, structured: dict[str, Any]) -> None:
     normalized: list[dict[str, str]] = []
     for item in structured.get("loaded_policies", []) or []:
@@ -86,7 +133,9 @@ def _validate_policies(control: Path, structured: dict[str, Any]) -> None:
         if not policy_id or not source_path or not reason:
             raise legacy.CodexProductionAgentError("loaded_policies requires canonical id/source_path/reason")
 
-        source, fragment = _source_in_control(control, source_path)
+        policy_id, source_path, source, fragment = _canonical_policy_reference(
+            control, policy_id, source_path
+        )
         if not source.is_file() or source.suffix.lower() not in {".yaml", ".yml"}:
             raise legacy.CodexProductionAgentError(f"Policy source is not authoritative YAML: {source_path}")
         data = yaml.safe_load(source.read_text(encoding="utf-8")) or {}
@@ -283,9 +332,9 @@ def _prompt(request: dict[str, Any]) -> str:
     return base + f"""
 
 PHASE 1.1 HARDENING CONTRACT
-- `loaded_policies[].id` is a canonical policy CLAUSE id, never a document id.
-- For a clause from user-policy prefer a full YAML fragment path, for example `.ai/user-policy.yaml#core_user_policies.minimum_cohesive_solution_first`.
-- A legacy leaf-only fragment is accepted only when that clause id is unique in the YAML document.
+- `loaded_policies[].id` must contain only the canonical leaf policy CLAUSE id, for example `minimum_cohesive_solution_first`. Never put a file path or `#fragment` in `id`.
+- `loaded_policies[].source_path` must contain the authoritative YAML file plus the exact dotted YAML fragment, for example `.unityagent-control/.ai/user-policy.yaml#core_user_policies.minimum_cohesive_solution_first`.
+- A legacy leaf-only fragment in `source_path` is accepted only when that clause id is unique in the YAML document.
 - Quality gate `requirement` must be one of: required, conditional, informational, not_applicable.
 - Use `conditional` only when that conditional gate is actually activated by this task. Otherwise use `not_applicable`.
 - The bridge ignores your overall status guess and derives completion from the authoritative Task Contract selected by your own route.
