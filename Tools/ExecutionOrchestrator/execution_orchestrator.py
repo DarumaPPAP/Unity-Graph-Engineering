@@ -362,6 +362,52 @@ def _verify_ticket(ticket: dict[str, Any]) -> None:
         raise OrchestrationError("ticket_integrity_failed", "execution ticket digest does not match")
 
 
+def _validate_ticket_semantics(ticket: dict[str, Any]) -> None:
+    """Reject semantically invalid tickets even when an attacker recomputes the digest."""
+    profile = str(ticket.get("execution_profile", "")).strip()
+    work_kind = str(ticket.get("work_kind", "")).strip()
+    source = _dict(ticket.get("source_verification"), "ticket.source_verification")
+    scope = str(source.get("scope_class", "")).strip()
+    paths = source.get("paths")
+    evidence_refs = source.get("evidence_refs")
+    completed = source.get("completed") is True
+
+    if not isinstance(paths, list) or not isinstance(evidence_refs, list):
+        raise OrchestrationError(
+            "ticket_semantics_invalid",
+            "ticket source_verification paths/evidence_refs must be arrays",
+        )
+
+    _validate_profile_work_kind(profile, work_kind, scope or None)
+
+    if profile != "personal_full_control":
+        if scope not in SAFE_NON_PERSONAL_SCOPES or paths:
+            raise OrchestrationError(
+                "ticket_semantics_invalid",
+                "non-personal ticket may not contain project-internal scope or local source paths",
+            )
+
+    if work_kind == "mutation":
+        if not completed or not paths or not evidence_refs:
+            raise OrchestrationError(
+                "ticket_semantics_invalid",
+                "mutation ticket requires completed source verification, source paths, and evidence refs",
+            )
+
+    if work_kind == "portable_import":
+        if (
+            profile != "team_safe_import"
+            or not completed
+            or scope != "portable_artifact"
+            or paths
+            or not evidence_refs
+        ):
+            raise OrchestrationError(
+                "ticket_semantics_invalid",
+                "portable_import ticket requires team_safe_import portable evidence without local paths",
+            )
+
+
 def _source_verification(
     workspace: Path,
     profile: str,
@@ -662,6 +708,7 @@ def finalize(workspace: Path, request: dict[str, Any]) -> dict[str, Any]:
     _validate_control_state(state, profile)
     ticket = _dict(request.get("ticket"), "ticket")
     _verify_ticket(ticket)
+    _validate_ticket_semantics(ticket)
     if ticket.get("execution_profile") != profile:
         raise OrchestrationError(
             "ticket_profile_mismatch",
