@@ -24,6 +24,7 @@ on:
       - "docs/**"
       - "examples/**"
       - ".github/workflows/validate-execution-contracts.yml"
+      - ".github/workflows/validate-unityagent-compatibility.yml"
   push:
     branches:
       - main
@@ -49,6 +50,7 @@ on:
       - "docs/**"
       - "examples/**"
       - ".github/workflows/validate-execution-contracts.yml"
+      - ".github/workflows/validate-unityagent-compatibility.yml"
 
 jobs:
   validate:
@@ -102,6 +104,9 @@ jobs:
       - name: Validate execution policy coherence
         run: python Tools/ExecutionPolicyValidator/validate_execution_policies.py
 
+      - name: Validate local UnityAgent compatibility boundary
+        run: python Tools/UnityAgentCompatibility/validate_local_compatibility.py
+
       - name: Test external intelligence and control-plane contracts
         run: python -m unittest discover -s Tests/ExternalProviders -p "test_*.py" -v
 
@@ -136,6 +141,8 @@ jobs:
           test -f Tests/UnityAgentCompatibility/test_handoff_adapter.py
           test -f Tests/BehaviorEvalAdapter/test_behavior_eval_adapter.py
           test -f Tools/UnityAgentCompatibility/handoff_adapter.py
+          test -f Tools/UnityAgentCompatibility/validate_local_compatibility.py
+          test -f Tools/UnityAgentCompatibility/validate_against_unityagent.py
           test -f Tools/BehaviorEvalAdapter/behavior_eval_adapter.py
           test -f Tools/IxAdapter/ix_adapter.py
           test -f Tools/ContinuationController/continuation_controller.py
