@@ -56,7 +56,7 @@ def main() -> int:
         "loaded_policies": [
             {
                 "id": "minimum_cohesive_solution_first",
-                "source_path": ".unityagent-control/.ai/user-policy.yaml",
+                "source_path": ".unityagent-control/.ai/user-policy.yaml#minimum_cohesive_solution_first",
                 "reason": "minimum cohesive solution",
             }
         ],
