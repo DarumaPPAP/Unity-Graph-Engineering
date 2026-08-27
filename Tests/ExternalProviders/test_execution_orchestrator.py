@@ -107,18 +107,25 @@ class ExecutionOrchestratorTests(unittest.TestCase):
         request.update(overrides)
         return request
 
-    def ticket(self, state=None, profile="personal_full_control"):
+    def ticket(self, state=None, profile="personal_full_control", work_kind=None):
         state = state or self.state(profile=profile)
+        effective_work_kind = work_kind or (
+            "portable_import" if profile == "team_safe_import" else "mutation"
+        )
         source = {
             "completed": True,
             "required": True,
             "scope_class": "project_internal" if profile == "personal_full_control" else "portable_artifact",
-            "paths": [str((self.workspace / "src.cs").resolve())],
+            "paths": (
+                [str((self.workspace / "src.cs").resolve())]
+                if profile == "personal_full_control"
+                else []
+            ),
             "evidence_refs": ["source-read-1"],
         }
         return orchestrator._ticket(
             profile=profile,
-            work_kind="mutation",
+            work_kind=effective_work_kind,
             state=state,
             decision=self.decision(),
             source_verification=source,
