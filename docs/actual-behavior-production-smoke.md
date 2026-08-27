@@ -61,6 +61,60 @@ The request contains only execution inputs, never Golden expectations:
 
 `golden_task_id` is provenance only. The Golden expectation is never transferred to the Agent.
 
+## Codex CLI Production Agent
+
+`Tools/CodexProductionAgent/codex_production_agent.py` adapts the local Codex CLI to the Production Agent command contract. It does not edit the real UnityAgent checkout. For every case it receives the temporary fixture workspace created by `BehaviorEvalAdapter`, copies only runtime control sources (`AGENTS.md`, `.ai` excluding `.ai/eval`, `.agents`, and `SkillReferences`) into a reserved `.unityagent-control` snapshot, and runs Codex against that temporary workspace.
+
+The bridge uses:
+
+- one `codex exec` turn
+- `--ephemeral`
+- `--json`
+- `--sandbox workspace-write`
+- an explicit model identity
+- a structured output schema for response/context/gate evidence
+- post-run mutation-scope verification
+- a protected hash for `.unityagent-control`
+
+MCP is disabled for Phase 1 by default with a per-run config override. This keeps the smoke independent from Unity Editor/MyUnityMCP availability and avoids an unrelated MCP startup failure changing the result. Use `--keep-mcp` only when a later evaluation explicitly requires MCP.
+
+The bridge resolves the model in this order:
+
+1. `--model`
+2. `CODEX_PRODUCTION_MODEL`
+3. the top-level `model` in `%USERPROFILE%\.codex\config.toml`
+
+The provider defaults to `openai`, or uses `CODEX_PRODUCTION_PROVIDER` / top-level `model_provider` when configured.
+
+### Windows local run
+
+Expected local checkouts:
+
+```text
+D:\UnityAgent
+D:\Unity-Graph-Engineering
+```
+
+From PowerShell:
+
+```powershell
+cd D:\Unity-Graph-Engineering
+python .\Tools\CodexProductionAgent\run_codex_production_smoke.py `
+  --unityagent-root D:\UnityAgent
+```
+
+If the Codex config already contains `model = "..."`, no model argument is required. To pin one explicitly:
+
+```powershell
+python .\Tools\CodexProductionAgent\run_codex_production_smoke.py `
+  --unityagent-root D:\UnityAgent `
+  --model gpt-5.6-luna
+```
+
+The wrapper converts this into the existing generic launcher contract; users do not need to hand-write `UNITYAGENT_PRODUCTION_COMMAND_JSON`.
+
+The real `D:\UnityAgent` checkout is used only as the source for the read-only control snapshot. Task mutations occur in the temporary Behavior Eval workspace. The bridge fails closed if an analysis/verification case mutates files, if a mutation escapes `allowed_paths`, if a prohibited path changes, or if Codex modifies `.unityagent-control`.
+
 ## Required evidence
 
 Every attempt must emit:
@@ -85,6 +139,8 @@ infrastructure_attempts: 1
 tool_manifest_hash: your-stable-tool-manifest-hash
 ```
 
+For the Codex bridge, the expected identity is `agent_id: codex-cli`, with the configured provider and explicitly resolved model.
+
 `execution_class` must be `production`; provider, model, and agent_id may not be fixture/fake/unavailable identities.
 
 ## Integrity behavior
@@ -97,6 +153,8 @@ tool_manifest_hash: your-stable-tool-manifest-hash
 - stale output is rejected
 - the repository fake Production Agent fixture is rejected by the production launcher
 - no retry is performed to hide first-pass quality
+- Codex control snapshot is hash-checked after execution
+- `.ai/eval` is not copied into the Codex control snapshot
 
 ## Result
 
