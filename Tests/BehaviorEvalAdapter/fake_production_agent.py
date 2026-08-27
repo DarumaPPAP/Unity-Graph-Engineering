@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from pathlib import Path
 
 import yaml
@@ -12,7 +13,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--request", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--exit-code", type=int, default=0)
+    parser.add_argument("--status", default="completed")
+    parser.add_argument("--sleep-seconds", type=float, default=0.0)
     args = parser.parse_args()
+
+    if args.sleep_seconds > 0:
+        time.sleep(args.sleep_seconds)
 
     request = json.loads(args.request.read_text(encoding="utf-8"))
     args.output.mkdir(parents=True, exist_ok=True)
@@ -67,7 +74,7 @@ def main() -> int:
     (args.output / "execution-metadata.yaml").write_text(
         yaml.safe_dump(
             {
-                "status": "completed",
+                "status": args.status,
                 "provider": "fixture-provider",
                 "model": "fixture-model",
                 "model_revision": "fixture-revision",
@@ -78,7 +85,7 @@ def main() -> int:
         ),
         encoding="utf-8",
     )
-    return 0
+    return args.exit_code
 
 
 if __name__ == "__main__":
