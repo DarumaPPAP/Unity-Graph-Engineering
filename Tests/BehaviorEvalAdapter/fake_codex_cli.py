@@ -40,6 +40,10 @@ def main() -> int:
         target.write_text("public sealed class CameraDebugger { public int FixedValue => 1; }\n", encoding="utf-8")
 
     route = os.environ.get("FAKE_CODEX_ROUTE", "architecture-design")
+    policy_source = os.environ.get(
+        "FAKE_CODEX_POLICY_SOURCE",
+        ".unityagent-control/.ai/user-policy.yaml#core_user_policies.minimum_cohesive_solution_first",
+    )
     response = {
         "response_markdown": f"Fake Codex production response for {model}. Compile evidence is not claimed unless observed.",
         "route": route,
@@ -56,7 +60,7 @@ def main() -> int:
         "loaded_policies": [
             {
                 "id": "minimum_cohesive_solution_first",
-                "source_path": ".unityagent-control/.ai/user-policy.yaml#minimum_cohesive_solution_first",
+                "source_path": policy_source,
                 "reason": "minimum cohesive solution",
             }
         ],
@@ -67,7 +71,13 @@ def main() -> int:
                 "requirement": "required",
                 "status": "passed",
                 "evidence": "static architecture review",
-            }
+            },
+            {
+                "id": "file_granularity",
+                "requirement": "required",
+                "status": "passed",
+                "evidence": "static file granularity review",
+            },
         ],
         "execution_evidence": [],
         "unresolved_bindings": [],
