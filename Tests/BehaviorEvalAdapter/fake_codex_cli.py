@@ -40,6 +40,10 @@ def main() -> int:
         target.write_text("public sealed class CameraDebugger { public int FixedValue => 1; }\n", encoding="utf-8")
 
     route = os.environ.get("FAKE_CODEX_ROUTE", "architecture-design")
+    policy_id = os.environ.get(
+        "FAKE_CODEX_POLICY_ID",
+        "minimum_cohesive_solution_first",
+    )
     policy_source = os.environ.get(
         "FAKE_CODEX_POLICY_SOURCE",
         ".unityagent-control/.ai/user-policy.yaml#core_user_policies.minimum_cohesive_solution_first",
@@ -59,7 +63,7 @@ def main() -> int:
         },
         "loaded_policies": [
             {
-                "id": "minimum_cohesive_solution_first",
+                "id": policy_id,
                 "source_path": policy_source,
                 "reason": "minimum cohesive solution",
             }
