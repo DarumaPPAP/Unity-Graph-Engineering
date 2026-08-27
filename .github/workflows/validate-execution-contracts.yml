@@ -4,18 +4,24 @@ on:
   pull_request:
     paths:
       - "AGENTS.md"
+      - "README.md"
       - "policies/**"
       - "schemas/**"
+      - "skills/unity-execution-router/**"
+      - "skills/unity-prompt-execution/**"
       - "skills/unity-graph-engineering/**"
       - "Tools/ExecutionPolicyValidator/**"
+      - "Tools/UnityAgentCompatibility/**"
+      - "Tools/BehaviorEvalAdapter/**"
       - "Tools/IxAdapter/**"
       - "Tools/ContinuationController/**"
       - "Tools/LayeredMemoryController/**"
       - "Tools/ExecutionOrchestrator/**"
       - "Tests/**"
       - "tests/**"
+      - "workflows/**"
       - "workflow-templates/**"
-      - "docs/external-intelligence-control-plane.md"
+      - "docs/**"
       - "examples/**"
       - ".github/workflows/validate-execution-contracts.yml"
   push:
@@ -23,18 +29,24 @@ on:
       - main
     paths:
       - "AGENTS.md"
+      - "README.md"
       - "policies/**"
       - "schemas/**"
+      - "skills/unity-execution-router/**"
+      - "skills/unity-prompt-execution/**"
       - "skills/unity-graph-engineering/**"
       - "Tools/ExecutionPolicyValidator/**"
+      - "Tools/UnityAgentCompatibility/**"
+      - "Tools/BehaviorEvalAdapter/**"
       - "Tools/IxAdapter/**"
       - "Tools/ContinuationController/**"
       - "Tools/LayeredMemoryController/**"
       - "Tools/ExecutionOrchestrator/**"
       - "Tests/**"
       - "tests/**"
+      - "workflows/**"
       - "workflow-templates/**"
-      - "docs/external-intelligence-control-plane.md"
+      - "docs/**"
       - "examples/**"
       - ".github/workflows/validate-execution-contracts.yml"
 
@@ -62,7 +74,7 @@ jobs:
           from pathlib import Path
           import yaml
 
-          roots = [Path('policies'), Path('schemas'), Path('workflow-templates'), Path('tests'), Path('Tests')]
+          roots = [Path('policies'), Path('schemas'), Path('workflows'), Path('workflow-templates'), Path('tests'), Path('Tests')]
           paths = []
           for root in roots:
               if root.exists():
@@ -93,6 +105,12 @@ jobs:
       - name: Test external intelligence and control-plane contracts
         run: python -m unittest discover -s Tests/ExternalProviders -p "test_*.py" -v
 
+      - name: Test UnityAgent compatibility contracts
+        run: python -m unittest discover -s Tests/UnityAgentCompatibility -p "test_*.py" -v
+
+      - name: Test Actual Behavior adapter contracts
+        run: python -m unittest discover -s Tests/BehaviorEvalAdapter -p "test_*.py" -v
+
       - name: Assert required contract files
         run: |
           test -f policies/contract-routing.yaml
@@ -101,11 +119,13 @@ jobs:
           test -f policies/continuation-control.yaml
           test -f policies/memory-layering.yaml
           test -f policies/execution-orchestration.yaml
+          test -f policies/unityagent-compatibility.yaml
           test -f schemas/capability-manifest.schema.yaml
           test -f schemas/execution-state.schema.yaml
           test -f schemas/continuation-state.schema.yaml
           test -f schemas/memory-layer.schema.yaml
           test -f schemas/execution-orchestration.schema.yaml
+          test -f schemas/unityagent-handoff-v2.schema.yaml
           test -f workflow-templates/verified-mutation.yaml
           test -f tests/contract-routing-cases.yaml
           test -f Tests/ExternalProviders/cases.yaml
@@ -113,6 +133,10 @@ jobs:
           test -f Tests/ExternalProviders/test_continuation_controller.py
           test -f Tests/ExternalProviders/test_layered_memory_controller.py
           test -f Tests/ExternalProviders/test_execution_orchestrator.py
+          test -f Tests/UnityAgentCompatibility/test_handoff_adapter.py
+          test -f Tests/BehaviorEvalAdapter/test_behavior_eval_adapter.py
+          test -f Tools/UnityAgentCompatibility/handoff_adapter.py
+          test -f Tools/BehaviorEvalAdapter/behavior_eval_adapter.py
           test -f Tools/IxAdapter/ix_adapter.py
           test -f Tools/ContinuationController/continuation_controller.py
           test -f Tools/LayeredMemoryController/layered_memory_controller.py
