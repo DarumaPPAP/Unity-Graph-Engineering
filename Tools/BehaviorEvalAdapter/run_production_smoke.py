@@ -28,9 +28,8 @@ def _unityagent_root(cli_root: Path | None) -> Path:
     root = Path(raw).expanduser().resolve()
     runner = root / "Tools" / "BehaviorEval" / "run_behavior_eval.py"
     suites = root / "Tests" / "BehaviorEval" / "suites.yaml"
-    contracts = root / "Tests" / "BehaviorEval" / "production-smoke-contracts.yaml"
-    if not root.is_dir() or not runner.is_file() or not suites.is_file() or not contracts.is_file():
-        raise ProductionSmokeError(f"Configured UnityAgent root is incomplete for Phase 1.1: {root}")
+    if not root.is_dir() or not runner.is_file() or not suites.is_file():
+        raise ProductionSmokeError(f"Configured UnityAgent root is incomplete: {root}")
     return root
 
 
@@ -48,7 +47,7 @@ def _load_agent_command(cli_value: str | None) -> tuple[str, list[str]]:
         raise ProductionSmokeError("Production Agent command must be a non-empty JSON string array")
     lowered = [item.replace("\\", "/").lower() for item in command]
     if any(token.endswith("fake_production_agent.py") for token in lowered):
-        raise ProductionSmokeError("Phase 1.1 production smoke refuses the fake Production Agent fixture")
+        raise ProductionSmokeError("Phase 1 production smoke refuses the repository fake Production Agent fixture")
     return raw, command
 
 
