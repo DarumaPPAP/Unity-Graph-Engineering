@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import re
 import sys
 from pathlib import Path, PurePosixPath
@@ -71,11 +70,7 @@ def _validate_policies(control: Path, structured: dict[str, Any]) -> None:
         data = yaml.safe_load(source.read_text(encoding="utf-8")) or {}
         if not _recursive_has_key(data, policy_id):
             raise legacy.CodexProductionAgentError(f"Unknown canonical policy clause: {policy_id}")
-        normalized.append({
-            "id": policy_id,
-            "source_path": source_path,
-            "reason": reason,
-        })
+        normalized.append({"id": policy_id, "source_path": source_path, "reason": reason})
     structured["loaded_policies"] = normalized
 
 
@@ -111,10 +106,25 @@ def _trusted_evidence(request: dict[str, Any]) -> list[dict[str, str]]:
 def _resolve_gates(control: Path, request: dict[str, Any], structured: dict[str, Any]) -> str:
     route = str(structured.get("route") or "").strip()
     contract = _task_contract(control, route)
-    required = {str(item) for item in contract.get("required_quality_gates", []) or []}
-    conditional = {str(item) for item in contract.get("conditional_quality_gates", []) or []}
-    by_id: dict[str, dict[str, str]] = {}
+    contract_required = {str(item) for item in contract.get("required_quality_gates", []) or []}
+    contract_conditional = {str(item) for item in contract.get("conditional_quality_gates", []) or []}
+    trusted = _trusted_evidence(request)
+    work_kind = str((request.get("execution", {}) or {}).get("work_kind") or "")
 
+    # A verification request reports the evidence it was given; it is not a hidden mutation run.
+    # In that mode trusted evidence defines the completion boundary. Other route gates remain
+    # diagnostic, so compile-only honesty can be measured without requiring unrelated runtime gates.
+    verification_scope = work_kind == "verification" and bool(trusted)
+    if verification_scope:
+        required = {item["gate"] for item in trusted}
+        conditional: set[str] = set()
+        known_nonblocking = (contract_required | contract_conditional) - required
+    else:
+        required = contract_required
+        conditional = contract_conditional
+        known_nonblocking = set()
+
+    by_id: dict[str, dict[str, str]] = {}
     for item in structured.get("quality_gates", []) or []:
         if not isinstance(item, dict):
             continue
@@ -127,6 +137,8 @@ def _resolve_gates(control: Path, request: dict[str, Any], structured: dict[str,
             status = "unavailable"
         if gate in required:
             level = "required"
+        elif gate in known_nonblocking:
+            level = "not_applicable"
         elif gate in conditional and reported_requirement == "conditional":
             level = "conditional"
         elif gate in conditional:
@@ -140,10 +152,9 @@ def _resolve_gates(control: Path, request: dict[str, Any], structured: dict[str,
             "evidence": str(item.get("evidence") or ""),
         }
 
-    trusted = _trusted_evidence(request)
     for item in trusted:
         gate = item["gate"]
-        level = "required" if gate in required else ("conditional" if gate in conditional else "informational")
+        level = "required" if gate in required else "informational"
         by_id[gate] = {
             "id": gate,
             "requirement": level,
@@ -252,6 +263,7 @@ PHASE 1.1 HARDENING CONTRACT
 - Quality gate `requirement` must be one of: required, conditional, informational, not_applicable.
 - Use `conditional` only when that conditional gate is actually activated by this task. Otherwise use `not_applicable`.
 - The bridge ignores your overall status guess and derives completion from the authoritative Task Contract selected by your own route.
+- For verification work with trusted observed evidence, report only what that evidence establishes; unrelated route gates are diagnostic, not additional work to invent.
 - Trusted observed evidence below is input evidence, not a Golden answer. Do not rewrite or broaden it.
 
 TRUSTED OBSERVED EVIDENCE
@@ -275,7 +287,6 @@ def main() -> int:
     version = "unavailable"
     tool_hash = hashlib.sha256(b"codex-production-agent-v2-unresolved").hexdigest()
     request: dict[str, Any] = {}
-    control: Path | None = None
 
     try:
         if args.timeout_seconds <= 0:
