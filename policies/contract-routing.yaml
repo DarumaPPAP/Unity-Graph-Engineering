@@ -1,5 +1,14 @@
-schema_version: "1.0"
+schema_version: "1.1"
 domain_contract_source: DarumaPPAP/UnityAgent/.ai/context-index.yaml
+compatibility_contract: policies/unityagent-compatibility.yaml
+
+unityagent_contracts:
+  context_index: DarumaPPAP/UnityAgent/.ai/context-index.yaml
+  execution_profiles: DarumaPPAP/UnityAgent/.ai/execution-profiles.yaml
+  context_manifest: DarumaPPAP/UnityAgent/.ai/context-manifest.schema.yaml
+  context_budget: DarumaPPAP/UnityAgent/.ai/context-budget.yaml
+  handoff_builder: DarumaPPAP/UnityAgent/Tools/LoopIntegration/handoff.py
+  behavior_eval_contract: DarumaPPAP/UnityAgent/.ai/eval/behavior-eval-contract.yaml
 
 selection_order:
   - execution_mode
@@ -46,6 +55,22 @@ routing_rules:
   capability_absence_does_not_block_planning: true
   unresolved_project_binding_must_not_be_guessed: true
   direct_mutation_requires_resolved_target_and_authoritative_channel: true
+  task_fingerprint_is_owned_by_UnityAgent: true
+  execution_owner_must_not_rederive_primary_route_when_handoff_v2_is_valid: true
+  context_manifest_id_must_be_preserved_across_handoff: true
+  required_and_conditional_quality_gates_must_remain_distinct: true
+
+handoff:
+  accepted_schema_versions:
+    - "2.0"
+  canonical_schema: schemas/unityagent-handoff-v2.schema.yaml
+  adapter: Tools/UnityAgentCompatibility/handoff_adapter.py
+  transcript_transfer: prohibited
+  execution_budget_transfer: prohibited
+  context_budget_decision:
+    owner: DarumaPPAP/UnityAgent
+    recompute: false
+    mutation_requires: within_budget
 
 team_safe_import_absent_capabilities:
   - project_scanner
