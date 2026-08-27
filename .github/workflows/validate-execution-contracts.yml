@@ -13,6 +13,7 @@ on:
       - "Tools/ExecutionPolicyValidator/**"
       - "Tools/UnityAgentCompatibility/**"
       - "Tools/BehaviorEvalAdapter/**"
+      - "Tools/CodexProductionAgent/**"
       - "Tools/IxAdapter/**"
       - "Tools/ContinuationController/**"
       - "Tools/LayeredMemoryController/**"
@@ -39,6 +40,7 @@ on:
       - "Tools/ExecutionPolicyValidator/**"
       - "Tools/UnityAgentCompatibility/**"
       - "Tools/BehaviorEvalAdapter/**"
+      - "Tools/CodexProductionAgent/**"
       - "Tools/IxAdapter/**"
       - "Tools/ContinuationController/**"
       - "Tools/LayeredMemoryController/**"
@@ -140,15 +142,19 @@ jobs:
           test -f Tests/ExternalProviders/test_execution_orchestrator.py
           test -f Tests/UnityAgentCompatibility/test_handoff_adapter.py
           test -f Tests/BehaviorEvalAdapter/test_behavior_eval_adapter.py
+          test -f Tests/BehaviorEvalAdapter/test_codex_production_agent.py
           test -f Tools/ExecutionPolicyValidator/validate_execution_policies_compat.py
           test -f Tools/UnityAgentCompatibility/handoff_adapter.py
           test -f Tools/UnityAgentCompatibility/validate_local_compatibility.py
           test -f Tools/UnityAgentCompatibility/validate_against_unityagent.py
           test -f Tools/BehaviorEvalAdapter/behavior_eval_adapter.py
+          test -f Tools/CodexProductionAgent/codex_production_agent.py
+          test -f Tools/CodexProductionAgent/run_codex_production_smoke.py
           test -f Tools/IxAdapter/ix_adapter.py
           test -f Tools/ContinuationController/continuation_controller.py
           test -f Tools/LayeredMemoryController/layered_memory_controller.py
           test -f Tools/ExecutionOrchestrator/execution_orchestrator.py
+          test -f docs/actual-behavior-production-smoke.md
           test -f docs/external-intelligence-control-plane.md
           test -f examples/continuation-controller-input.json
           test -f examples/layered-memory-capture.json

@@ -98,6 +98,25 @@ behavior_eval:
     mutation_scope_transfer_required: true
     evidence_contract_transfer_required: true
     known_fake_fixture_forbidden: true
+    codex:
+      bridge: Tools/CodexProductionAgent/codex_production_agent.py
+      launcher: Tools/CodexProductionAgent/run_codex_production_smoke.py
+      agent_id: codex-cli
+      sandbox: workspace-write
+      ephemeral: true
+      structured_output_required: true
+      mcp_default: disabled
+      control_snapshot:
+        destination: .unityagent-control
+        sources:
+          - AGENTS.md
+          - .ai
+          - .agents
+          - SkillReferences
+        exclude:
+          - .ai/eval
+        integrity_hash_required: true
+      mutation_scope_postcheck_required: true
 
 unavailable_semantics:
   unavailable_is_not_passed: true
