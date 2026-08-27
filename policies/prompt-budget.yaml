@@ -1,4 +1,4 @@
-schema_version: "1.0"
+schema_version: "1.1"
 mode: prompt
 
 limits:
@@ -18,13 +18,29 @@ required_behavior:
   prefer_deterministic_validation: true
   create_task_graph: false
   create_durable_checkpoint: false
+  consume_unityagent_context_budget_decision: true
+  do_not_recompute_unityagent_context_budget: true
+
+context_budget_guard:
+  owner: DarumaPPAP/UnityAgent
+  mutation_requires: within_budget
+  compression_required_before_mutation: stop
+  blocked_before_mutation: stop
+  unmeasured_before_mutation: stop
+  read_only_analysis_may_continue_without_claiming_pass: true
+
+unavailable_evidence_semantics:
+  unavailable_is_not_passed: true
+  unavailable_alone_triggers_graph_escalation: false
+  continue_when_current_goal_can_be_safely_completed_with_reduced_claim_scope: true
+  escalate_only_when_execution_model_must_change_to_satisfy_current_goal: true
 
 stop_and_propose_graph_loop_when:
   - second_primary_hypothesis_rejected
   - second_subsystem_mutation_required
   - requested_scope_must_expand
-  - runtime_visual_or_performance_iteration_required
-  - deterministic_completion_evidence_unavailable
+  - runtime_visual_or_performance_iteration_requires_bounded_loop
+  - current_goal_requires_independent_execution_state_or_verifier
   - any_limit_would_be_exceeded
 
 on_limit:
