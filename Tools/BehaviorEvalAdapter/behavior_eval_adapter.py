@@ -34,6 +34,15 @@ WORK_KIND_MAP = {
 }
 REQUIRED_EVIDENCE = ("response.md", "context-manifest.yaml", "artifact-index.yaml")
 OPTIONAL_EVIDENCE = ("diff.patch", "gate-evidence.yaml", "metrics.json")
+DEFAULT_EXECUTION_TIMEOUT_SECONDS = 900.0
+MANAGED_OUTPUT_NAMES = (
+    *REQUIRED_EVIDENCE,
+    *OPTIONAL_EVIDENCE,
+    "generated",
+    "execution-envelope.yaml",
+    "executor-stdout.txt",
+    "executor-stderr.txt",
+)
 
 
 class BehaviorAdapterError(ValueError):
@@ -128,6 +137,16 @@ def _load_command(cli_value: str | None) -> list[str]:
     return command
 
 
+def _assert_clean_output(output: Path) -> None:
+    output.mkdir(parents=True, exist_ok=True)
+    collisions = sorted(name for name in MANAGED_OUTPUT_NAMES if (output / name).exists())
+    if collisions:
+        joined = ", ".join(collisions)
+        raise BehaviorAdapterError(
+            f"Behavior Eval output must be fresh; managed artifacts already exist: {joined}"
+        )
+
+
 def _copy_evidence(staging: Path, output: Path) -> None:
     for name in REQUIRED_EVIDENCE:
         source = staging / name
@@ -142,10 +161,7 @@ def _copy_evidence(staging: Path, output: Path) -> None:
 
     generated = staging / "generated"
     if generated.is_dir():
-        target = output / "generated"
-        if target.exists():
-            shutil.rmtree(target)
-        shutil.copytree(generated, target)
+        shutil.copytree(generated, output / "generated")
 
 
 def _metadata(staging: Path) -> dict[str, Any]:
@@ -164,6 +180,15 @@ def _gate_evidence(output: Path) -> list[dict[str, Any]]:
     return [item for item in items if isinstance(item, dict)]
 
 
+def _resolved_status(metadata: dict[str, Any], process_returncode: int) -> str:
+    if process_returncode != 0:
+        return "failed"
+    requested_status = str(metadata.get("status") or "")
+    if requested_status in {"completed", "unavailable", "failed"}:
+        return requested_status
+    return "completed"
+
+
 def _write_envelope(
     request: dict[str, Any],
     output: Path,
@@ -179,10 +204,7 @@ def _write_envelope(
     model = str(metadata.get("model") or "unavailable")
     model_revision = str(metadata.get("model_revision") or "unavailable")
     infrastructure_attempts = max(1, int(metadata.get("infrastructure_attempts", 1)))
-    requested_status = str(metadata.get("status") or "")
-    status = requested_status if requested_status in {"completed", "unavailable", "failed"} else (
-        "completed" if process_returncode == 0 else "failed"
-    )
+    status = _resolved_status(metadata, process_returncode)
 
     evidence: dict[str, Any] = {
         "context_manifest": "context-manifest.yaml",
@@ -238,6 +260,14 @@ def _write_envelope(
     )
 
 
+def _publish_bundle(staged_output: Path, output: Path) -> None:
+    for source in sorted(staged_output.iterdir(), key=lambda item: item.name):
+        destination = output / source.name
+        if destination.exists():
+            raise BehaviorAdapterError(f"Refusing to overwrite Behavior Eval artifact: {destination.name}")
+        shutil.move(str(source), str(destination))
+
+
 def _resolve_unityagent_root(cli_root: Path | None) -> Path:
     if cli_root is not None:
         root = cli_root.resolve()
@@ -259,23 +289,29 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--unityagent-root", type=Path, default=None)
     parser.add_argument("--agent-command-json", default=None)
+    parser.add_argument("--timeout-seconds", type=float, default=DEFAULT_EXECUTION_TIMEOUT_SECONDS)
     args = parser.parse_args()
 
     try:
+        if args.timeout_seconds <= 0:
+            raise BehaviorAdapterError("--timeout-seconds must be greater than zero")
+
         request = _load_yaml(args.request)
         unityagent_root = _resolve_unityagent_root(args.unityagent_root)
         fixture, mode, work_kind = _validate_request(request, unityagent_root)
         command = _load_command(args.agent_command_json)
 
-        args.output.mkdir(parents=True, exist_ok=True)
+        _assert_clean_output(args.output)
         fixture_hash = _hash_tree(fixture)
 
         with tempfile.TemporaryDirectory(prefix="unityagent-behavior-") as temp_dir:
             temp = Path(temp_dir)
             sandbox = temp / "workspace"
             staging = temp / "evidence"
+            publish = temp / "publish"
             shutil.copytree(fixture, sandbox)
             staging.mkdir(parents=True)
+            publish.mkdir(parents=True)
 
             production_request = {
                 "schema_version": "1.0",
@@ -297,27 +333,35 @@ def main() -> int:
                 encoding="utf-8",
             )
 
-            completed = subprocess.run(
-                [*command, "--request", str(production_request_path), "--output", str(staging)],
-                cwd=ROOT,
-                check=False,
-                text=True,
-                capture_output=True,
-                shell=False,
-            )
-            (args.output / "executor-stdout.txt").write_text(completed.stdout, encoding="utf-8")
-            (args.output / "executor-stderr.txt").write_text(completed.stderr, encoding="utf-8")
-            _copy_evidence(staging, args.output)
+            try:
+                completed = subprocess.run(
+                    [*command, "--request", str(production_request_path), "--output", str(staging)],
+                    cwd=ROOT,
+                    check=False,
+                    text=True,
+                    capture_output=True,
+                    shell=False,
+                    timeout=args.timeout_seconds,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise BehaviorAdapterError(
+                    f"Production Agent command timed out after {args.timeout_seconds:g} seconds"
+                ) from exc
+
+            (publish / "executor-stdout.txt").write_text(completed.stdout, encoding="utf-8")
+            (publish / "executor-stderr.txt").write_text(completed.stderr, encoding="utf-8")
+            _copy_evidence(staging, publish)
             metadata = _metadata(staging)
             _write_envelope(
                 request,
-                args.output,
+                publish,
                 command=command,
                 fixture_hash=fixture_hash,
                 mode=mode,
                 metadata=metadata,
                 process_returncode=completed.returncode,
             )
+            _publish_bundle(publish, args.output)
 
         return 0
     except (OSError, UnicodeError, yaml.YAMLError, json.JSONDecodeError, BehaviorAdapterError, ValueError) as exc:
