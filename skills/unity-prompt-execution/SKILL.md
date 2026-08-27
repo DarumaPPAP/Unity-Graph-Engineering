@@ -7,7 +7,7 @@ allowed-tools:
   - Edit
   - Bash
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # Unity Prompt Execution
@@ -20,6 +20,8 @@ metadata:
 - 対象Repositoryの既存Project Context
 - UnityAgent Context Index
 - 選択されたContext Pack
+- UnityAgent Task Fingerprint / Task Contract
+- UnityAgent Context Manifest / Context Budget decision
 - 対象Sourceと直接依存
 
 Project Context Generator、Package導入、Project初期化、Setup Scriptは既定Inputではありません。
@@ -36,15 +38,27 @@ Prompt Engineeringは、既存Projectと既存Repositoryへコードを実装す
 - 本当に欠けている依存は未解決Bindingまたは未検証Gateとして報告し、環境構築を勝手に開始しない。
 - ユーザーが環境構築も明示的に依頼した場合だけ、コード実装とは別Mutation scopeとして扱う。
 
+## UnityAgent compatibility boundary
+
+`policies/unityagent-compatibility.yaml`に従う。
+
+- Task Fingerprint / Primary Route / Task ContractをExecution側で再推論しない。
+- UnityAgent Context BudgetをExecution Budgetへ統合しない。
+- MutationはUnityAgentのContext Budget decisionが`within_budget`の場合だけ開始できる。
+- `compression_required` / `blocked` / `unmeasured`ではMutationを開始しない。
+- Read-only分析は必要に応じて継続できるが、Context Budget PASSを主張しない。
+- Required GateとConditional Gateを混同しない。
+
 ## Flow
 
 1. Minimal Contractを確定する。
 2. UnityAgentからPrimary Domain Skillを一つ選ぶ。
 3. Context Pack、対象Source、直接依存だけを読む。
-4. 既存環境を前提に、依頼されたコード変更を一つのMutation scopeとして実装する。
-5. Validator、Compile、Testなど決定的な検証を行う。
-6. 不足環境がある場合はコード実装を巻き戻さず、未解決Bindingまたは未検証事項として報告する。
-7. 結果と未検証事項を報告する。
+4. UnityAgent Context Budget decisionを確認する。
+5. `within_budget`なら、既存環境を前提に依頼されたコード変更を一つのMutation scopeとして実装する。
+6. Validator、Compile、Testなど決定的な検証を行う。
+7. 不足環境がある場合はコード実装を巻き戻さず、未解決Bindingまたは未検証事項として報告する。
+8. 結果と未検証事項を報告する。
 
 ## Minimal Contract
 
@@ -75,9 +89,13 @@ revert_condition: ""
 - Mutation Attemptは最大2
 - 並列Workerは使用しない
 
+UnityAgent Context BudgetはSelection / Retrieval / CompressionのAuthority、Prompt BudgetはExecution消費量のAuthorityです。相互に再計算しません。
+
 ## Escalation gate
 
-Budget超過、2番目のSubsystem Mutation、決定的Evidence不足、Runtime / Visual / Performance反復が必要になった場合はMutationを停止します。
+Budget超過、2番目のSubsystem Mutation、現在Goalが独立Execution State / Verifier / bounded Runtime・Visual・Performance Loopを必要とする場合はMutationを停止します。
+
+**検証Evidenceが`unavailable`であることだけをGraph / LoopへのEscalation理由にしません。** 現在GoalをPromptのまま安全に完遂でき、claim scopeを縮小して未検証事項を明示できるならPromptを維持します。
 
 `policies/mode-escalation.yaml`に従い、Graph / Loopへの変更確認を出します。ユーザーがPrompt継続を選んだ場合は、一つの仮説、一つのScope、実行可能な検証だけに限定します。
 
@@ -101,6 +119,7 @@ Prompt Modeでも自己申告だけで完了にしません。
 
 - Execution Mode: Prompt
 - Minimal Contract
+- UnityAgent Context Manifest ID / Context Budget decision
 - 読んだContext Pack
 - 変更Artifact
 - 実施した検証
@@ -115,3 +134,10 @@ Prompt Modeでも自己申告だけで完了にしません。
 このSkillはTask Graph、複数Worker、永続Checkpoint、長期Knowledge Write-backを作りません。必要になった場合はMode変更を提案します。
 
 このSkillは、明示依頼のない環境構築、Project初期化、Package導入、ProjectSettings変更、Setup Tool生成も行いません。
+
+## Common mistakes
+
+- UnityAgent Context BudgetをPrompt Budgetとして再計算する
+- `unavailable`だけでGraphへEscalateする
+- Task FingerprintやPrimary RouteをExecution側で再推論する
+- Required GateとConditional Gateを一つのGate集合へ潰す
