@@ -111,7 +111,6 @@ def build_state_patch(document: dict[str, Any]) -> dict[str, Any]:
             "conditional_quality_gates": document["conditional_quality_gates"],
             "unresolved_bindings": document["unresolved_bindings"],
         },
-        "mutation_allowed_by_context_budget": context_budget.get("decision") == "within_budget",
     }
 
 
