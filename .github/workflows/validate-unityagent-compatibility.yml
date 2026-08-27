@@ -1,0 +1,44 @@
+name: Validate UnityAgent Compatibility
+
+on:
+  workflow_dispatch:
+    inputs:
+      unityagent_ref:
+        description: UnityAgent ref to validate against
+        required: false
+        default: main
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Unity-Graph-Engineering
+        uses: actions/checkout@v4
+        with:
+          path: Unity-Graph-Engineering
+
+      - name: Checkout UnityAgent
+        uses: actions/checkout@v4
+        with:
+          repository: DarumaPPAP/UnityAgent
+          ref: ${{ github.event.inputs.unityagent_ref || 'main' }}
+          path: UnityAgent
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install YAML parser
+        run: python -m pip install --disable-pip-version-check pyyaml
+
+      - name: Validate current UnityAgent boundary
+        working-directory: Unity-Graph-Engineering
+        run: >-
+          python Tools/UnityAgentCompatibility/validate_against_unityagent.py
+          --unityagent-root ../UnityAgent
