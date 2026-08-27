@@ -19,6 +19,78 @@ properties:
   related_knowledge_ids:
     type: array
     items: {type: string}
+  unityagent_handoff:
+    type: [object, "null"]
+    required:
+      - schema_version
+      - task_id
+      - context_manifest_id
+      - context_manifest_schema_version
+      - task_fingerprint
+      - task_contract_ref
+      - risk_level
+      - selected_contexts
+      - context_budget_decision
+      - allowed_mutations
+      - prohibited_mutations
+      - required_quality_gates
+      - conditional_quality_gates
+      - unresolved_bindings
+    properties:
+      schema_version: {const: "2.0"}
+      task_id: {type: string, minLength: 1}
+      context_manifest_id: {type: string, minLength: 1}
+      context_manifest_schema_version: {type: string, minLength: 1}
+      task_fingerprint:
+        type: object
+        required: [intent, artifact, scope, failure_mode, architecture_state, mutation_target, evidence_state, project_access]
+        properties:
+          intent: {}
+          artifact: {}
+          scope: {}
+          failure_mode: {}
+          architecture_state: {}
+          mutation_target: {}
+          evidence_state: {}
+          project_access: {}
+        additionalProperties: true
+      task_contract_ref: {type: string, minLength: 1}
+      risk_level: {type: string, pattern: "^R[0-9]+$"}
+      selected_contexts:
+        type: array
+        items:
+          type: object
+          required: [id, source_hash]
+          properties:
+            id: {type: string, minLength: 1}
+            source_hash: {type: [string, "null"]}
+          additionalProperties: false
+      context_budget_decision:
+        type: object
+        required: [contract, profile, decision, blocking_reasons]
+        properties:
+          contract: {const: .ai/context-budget.yaml}
+          profile: {type: string, minLength: 1}
+          decision: {enum: [within_budget, compression_required, blocked, unmeasured]}
+          blocking_reasons:
+            type: array
+            items: {type: string}
+        additionalProperties: false
+      allowed_mutations:
+        type: array
+        items: {type: string}
+      prohibited_mutations:
+        type: array
+        items: {type: string}
+      required_quality_gates:
+        type: array
+        items: {type: string}
+      conditional_quality_gates:
+        type: array
+        items: {type: string}
+      unresolved_bindings:
+        type: array
+    additionalProperties: false
   mode_selection_source:
     enum: [default, explicit, approved_escalation]
   profile_selection_source:
