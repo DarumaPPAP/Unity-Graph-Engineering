@@ -25,6 +25,7 @@ class Phase11HardeningTests(unittest.TestCase):
         (control / ".ai" / "user-policy.yaml").write_text(
             yaml.safe_dump({
                 "core_user_policies": {
+                    "engineering_principles": {"priority": "critical"},
                     "minimum_cohesive_solution_first": {"priority": "critical"},
                     "evidence_scoped_claims": {"priority": "critical"},
                 }
@@ -61,6 +62,26 @@ class Phase11HardeningTests(unittest.TestCase):
             }
             bridge._validate_policies(control, structured)
             self.assertEqual(structured["loaded_policies"][0]["id"], "minimum_cohesive_solution_first")
+
+    def test_policy_provenance_normalizes_real_production_qualified_id_shape(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            control = self._control(Path(temp_dir))
+            structured = {
+                "loaded_policies": [{
+                    "id": ".ai/user-policy.yaml#core_user_policies.engineering_principles",
+                    "source_path": ".unityagent-control/.ai/user-policy.yaml",
+                    "reason": "KISS/YAGNI and responsibility-depth policy",
+                }]
+            }
+
+            bridge._validate_policies(control, structured)
+
+            policy = structured["loaded_policies"][0]
+            self.assertEqual(policy["id"], "engineering_principles")
+            self.assertEqual(
+                policy["source_path"],
+                ".unityagent-control/.ai/user-policy.yaml#core_user_policies.engineering_principles",
+            )
 
     def test_policy_provenance_keeps_unique_leaf_fragment_compatibility(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -134,6 +155,41 @@ class Phase11HardeningTests(unittest.TestCase):
                 }]
             }
             bridge._validate_policies(control, exact)
+
+    def test_qualified_policy_id_rejects_different_source_document(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            control = self._control(Path(temp_dir))
+            other = control / ".ai" / "other-policy.yaml"
+            other.write_text(
+                yaml.safe_dump({
+                    "core_user_policies": {
+                        "engineering_principles": {"priority": "other"},
+                    }
+                }, sort_keys=False),
+                encoding="utf-8",
+            )
+            invalid = {
+                "loaded_policies": [{
+                    "id": ".ai/user-policy.yaml#core_user_policies.engineering_principles",
+                    "source_path": ".unityagent-control/.ai/other-policy.yaml",
+                    "reason": "conflicting documents",
+                }]
+            }
+            with self.assertRaises(legacy.CodexProductionAgentError):
+                bridge._validate_policies(control, invalid)
+
+    def test_qualified_policy_id_rejects_conflicting_source_fragment(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            control = self._control(Path(temp_dir))
+            invalid = {
+                "loaded_policies": [{
+                    "id": ".ai/user-policy.yaml#core_user_policies.engineering_principles",
+                    "source_path": ".unityagent-control/.ai/user-policy.yaml#core_user_policies.evidence_scoped_claims",
+                    "reason": "conflicting fragments",
+                }]
+            }
+            with self.assertRaises(legacy.CodexProductionAgentError):
+                bridge._validate_policies(control, invalid)
 
     def test_optional_unavailable_gate_does_not_fail_architecture_task(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
