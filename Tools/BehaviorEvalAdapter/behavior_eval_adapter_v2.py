@@ -87,6 +87,51 @@ def _copy_bundle(staging: Path, publish: Path) -> None:
             shutil.copy2(source, publish / name)
 
 
+def _changed_paths_from_metrics(staging: Path) -> list[str] | None:
+    path = staging / "metrics.json"
+    if not path.is_file():
+        return None
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or "changed_paths" not in data:
+        return None
+    raw = data.get("changed_paths")
+    if not isinstance(raw, list) or not all(isinstance(item, str) for item in raw):
+        raise legacy.BehaviorAdapterError("Production metrics changed_paths must be a string list")
+    return [item.replace("\\", "/") for item in raw]
+
+
+def _enforce_mutation_noop_classification(
+    *,
+    work_kind: str,
+    staging: Path,
+    metadata: dict[str, Any],
+    process_returncode: int,
+    timed_out: bool,
+) -> dict[str, Any]:
+    """Preserve mutation no-op as observed Agent regression at the adapter boundary.
+
+    The Production Agent is the primary owner of mutation-scope enforcement. This adapter
+    check is defense-in-depth so a missing/overwritten child failure_class cannot silently
+    turn `mutation + changed_paths=[]` back into a generic model failure downstream.
+    """
+    if work_kind != "mutation" or timed_out or process_returncode not in {0, 10}:
+        return metadata
+
+    existing = str(metadata.get("failure_class") or "").strip()
+    if existing in INFRASTRUCTURE_FAILURES:
+        return metadata
+
+    changed_paths = _changed_paths_from_metrics(staging)
+    if changed_paths != []:
+        return metadata
+
+    patched = dict(metadata)
+    patched["status"] = "failed"
+    patched["failure_class"] = "agent_behavior_regression"
+    patched["failure_reason"] = "Mutation execution completed without changing any workspace file."
+    return patched
+
+
 def _write_envelope_v2(
     request: dict[str, Any], publish: Path, *, command: list[str], fixture_hash: str,
     mode: str, metadata: dict[str, Any], process_returncode: int, adapter_runtime: dict[str, Any],
@@ -96,12 +141,16 @@ def _write_envelope_v2(
     model = str(metadata.get("model") or "unavailable")
     model_revision = str(metadata.get("model_revision") or "unavailable")
     failure_class = str(metadata.get("failure_class") or "").strip()
-    if process_returncode != 0 and not failure_class:
+    if process_returncode == 10 and not failure_class:
+        failure_class = "agent_behavior_regression"
+    elif process_returncode != 0 and not failure_class:
         failure_class = "runtime_protocol_failure"
     observation_state = "not_observed" if failure_class in INFRASTRUCTURE_FAILURES else "observed"
     status = legacy._resolved_status(metadata, process_returncode)
     if failure_class == "runtime_timeout":
         status = "unavailable"
+    elif failure_class == "agent_behavior_regression":
+        status = "failed"
 
     evidence: dict[str, Any] = {
         "context_manifest": "context-manifest.yaml",
@@ -252,6 +301,13 @@ def main() -> int:
 
             _copy_bundle(staging, publish)
             metadata = legacy._metadata(staging)
+            metadata = _enforce_mutation_noop_classification(
+                work_kind=work_kind,
+                staging=staging,
+                metadata=metadata,
+                process_returncode=(124 if process.timed_out else process.returncode),
+                timed_out=process.timed_out,
+            )
             if args.require_production_identity and not process.timed_out:
                 legacy._validate_production_identity(metadata)
             _write_envelope_v2(
