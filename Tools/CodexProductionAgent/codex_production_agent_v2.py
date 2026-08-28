@@ -266,6 +266,8 @@ def _scope_error(request: dict[str, Any], changed: list[str]) -> str:
     work_kind = str(execution.get("work_kind") or "")
     allowed = legacy._normalized_scope(request, "allowed_paths")
     prohibited = legacy._normalized_scope(request, "prohibited_paths")
+    if work_kind == "mutation" and not changed:
+        return "Mutation execution completed without changing any workspace file."
     if work_kind in {"analysis", "verification"} and changed:
         return "Non-mutating execution changed workspace files: " + ", ".join(changed)
     prohibited_hits = [path for path in changed if any(legacy._path_matches(path, scope) for scope in prohibited)]
@@ -329,7 +331,20 @@ def _write_metrics(output: Path, *, failure_class: str, changed: list[str], cont
 def _prompt(request: dict[str, Any]) -> str:
     base = legacy._build_prompt(request)
     observed = request.get("observed_evidence", []) or []
-    return base + f"""
+    work_kind = str((request.get("execution", {}) or {}).get("work_kind") or "")
+    mutation_contract = ""
+    if work_kind == "mutation":
+        mutation_contract = """
+
+MUTATION EXECUTION CONTRACT
+- This attempt is mutation work. A successful completion must produce at least one requested workspace file change.
+- Do not replace an explicitly requested bounded edit with explanation-only output when the source itself is sufficient to make the safe local change.
+- Validation availability and edit execution are separate concerns: an unavailable Compile/Editor/Runtime gate must be reported honestly, but it does not by itself justify skipping a source-proven safe patch.
+- Stay inside the allowed mutation paths and preserve the requested public/serialized/structural contracts.
+- If the requested mutation cannot be safely performed, report the task as failed or unavailable with the concrete blocker; do not report success with zero workspace changes.
+"""
+
+    return base + mutation_contract + f"""
 
 PHASE 1.1 HARDENING CONTRACT
 - `loaded_policies[].id` must contain only the canonical leaf policy CLAUSE id, for example `minimum_cohesive_solution_first`. Never put a file path or `#fragment` in `id`.
@@ -459,7 +474,10 @@ def main() -> int:
         if scope_error:
             structured["execution_status"] = "failed"
             response = str(structured.get("response_markdown") or "").rstrip()
-            structured["response_markdown"] = (response + "\n\n" if response else "") + f"Mutation scope violation: {scope_error}"
+            structured["response_markdown"] = (
+                (response + "\n\n" if response else "")
+                + f"Mutation execution contract violation: {scope_error}"
+            )
 
         legacy._write_success_evidence(
             request, args.output, structured, provider=provider, model=model, version=version,
